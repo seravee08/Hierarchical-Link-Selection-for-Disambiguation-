@@ -2,66 +2,43 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "opencv2/calib3d.hpp"
-#include "opencv2/highgui.hpp"
-#include "opencv2/imgproc.hpp"
-
-#include "SiftIO.h"
-#include "Matching.h"
+#include "Matching_control.h"
 
 using namespace std;
 using namespace cv;
 
 int main()
 {
-	//int point_count = 100;
-	//vector<Point2f> points1(point_count);
-	//vector<Point2f> points2(point_count);
+	// Declare path to the image list
+	std::string image_list_path = "C:/Users/fango/OneDrive/Documents/GitHub/ComputeF/data/fc/image_list.txt";
 
-	//for (int i = 0; i < point_count; i++) {
-	//	points1[i] = Point2f(float(rand() % 640), float(rand() % 480));
-	//	points2[i] = Point2f(float(rand() % 640), float(rand() % 480));
+	Matching_control match_ctrl(image_list_path);
+	// match_ctrl.readIn_Keypoints();
+	match_ctrl.readIn_Matchings();
+	//match_ctrl.delete_bad_matchings();
+	//match_ctrl.compute_Homography();
+	//match_ctrl.rectify_matching_homoMask();
+
+	//const int number_image = match_ctrl.getImage_num();
+	//for (int i = 0; i < number_image - 1; i++) {
+	//	for (int j = i + 1; j < number_image; j++) {
+	//		cout << "Link (" << i << " , " << j << ")  " <<  match_ctrl.getWarped_diff_value(i, j) << "  " << match_ctrl.getMatch_number(i, j) << endl;
+	//		// match_ctrl.displayMatchings(i, j);
+	//	}
 	//}
 
-	//Mat F = findFundamentalMat(points1, points2, CV_FM_RANSAC, 2, 0.50);
+	// Eigen::MatrixXf warped_diff = match_ctrl.getWarped_diff_mat();
+	Eigen::MatrixXf matching_number = match_ctrl.getMatching_number_mat().cast<float>();
+	// Eigen::MatrixXf gist_dist = match_ctrl.compute_gist_dist_all();
+	std::vector<Graph_disamb> graphs = match_ctrl.constructGraph_with_homography_validate(false, matching_number);
+	// match_ctrl.writeOut_Matchings(graphs);
+	match_ctrl.writeOut_Layout(graphs);
 
-	//cout << F << endl;
-
-	// ===== Read in sift and auxiliary information =====
-	std::string img_name1 = "C:/Users/fango/OneDrive/Documents/GitHub/ComputeF/data/view_0000.jpg";
-	std::string img_name2 = "C:/Users/fango/OneDrive/Documents/GitHub/ComputeF/data/view_0001.jpg";
-	Image_info img1(img_name1);
-	Image_info img2(img_name2);
-	img1.read_Auxililiary();
-	img2.read_Auxililiary();
-	img1.read_Sift();
-	img2.read_Sift();
-
-	Eigen::Matrix<float, 2, Eigen::Dynamic> coords1 = img1.get_coordinates();
-	Eigen::Matrix<float, 2, Eigen::Dynamic> coords2 = img2.get_coordinates();
-
-	// ===== Read in matchings =====
-	std::string matchings_name = "C:/Users/fango/OneDrive/Documents/GitHub/ComputeF/data/matchings.txt";
-	Matching match(matchings_name);
-	match.read_matchings();
-
-	Eigen::Matrix<int, 2, Eigen::Dynamic> matchings = match.get_matchings(0);
-
-	// ===== TODO: Lib-igl =====
-	const int matching_number = matchings.cols();
-	vector<Point2f> points1(matching_number);
-	vector<Point2f> points2(matching_number);
-
-	for (int i = 0; i < matching_number; i++) {
-		int upper_index = matchings(0, i);
-		int lower_index = matchings(1, i);
-		points1[i] = Point2f(coords1(0, upper_index), coords1(1, upper_index));
-		points2[i] = Point2f(coords2(0, lower_index), coords2(1, lower_index));
+	for (int i = 0; i < graphs.size(); i++) {
+		cout << "Graph " << i << ": " << std::endl;
+		cout << graphs[i].getLayout() << std::endl;
+		system("pause");
 	}
-
-	Mat F = findFundamentalMat(points1, points2, CV_FM_RANSAC, 2, 0.99);
-
-	cout << F << endl;
 
 	system("pause");
 

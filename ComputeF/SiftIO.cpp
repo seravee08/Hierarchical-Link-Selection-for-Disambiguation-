@@ -1,5 +1,3 @@
-#include "SiftIO.h"
-
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -7,10 +5,17 @@
 #include <vector>
 #include <stdlib.h>
 
+#include "SiftIO.h"
+#include "Parameters.h"
+#include "standalone_image.h"
+#include "gist.h"
+
 #define _SIZE_INT				sizeof(int)
 #define _SIZE_FLOAT				sizeof(float)
 #define _SIZE_UNSIGNED_CHAR		sizeof(unsigned char)
 #define _PI						3.14159
+
+const cls::GISTParams DEFAULT_GIST_PARAMS{ true, 32, 32, 4, 3,{ 8, 8, 4 } };
 
 Image_info::Image_info(const std::string img_name_):
 	img_name	(img_name_),
@@ -19,7 +24,8 @@ Image_info::Image_info(const std::string img_name_):
 	aux_exist	(false),
 	sift_exist  (false)
 {
-
+	image = cv::imread(img_name_.c_str(), CV_LOAD_IMAGE_COLOR);
+	assert(image.channels() == 3);
 }
 
 void Image_info::splitFilename(
@@ -68,8 +74,38 @@ std::string Image_info::extract_AUX_name(const std::string img_name_)
 	return aux_name;
 }
 
+std::vector<float> Image_info::compute_gist(cv::Mat target_)
+{
+	std::vector<float> result;
+	cls::GIST gist_ext(DEFAULT_GIST_PARAMS);
+	gist_ext.extract(target_, result);
+
+	return result;
+}
+
+float Image_info::compute_gist_dist(
+	std::vector<float> desc1_,
+	std::vector<float> desc2_
+)
+{
+	// Validate two descriptors
+	assert(desc1_.size() == desc2_.size());
+
+	float dist = 0.0;
+	for (int i = 0; i < desc1_.size(); i++) {
+		dist += (desc1_[i] - desc2_[i]) * (desc1_[i] - desc2_[i]);
+	}
+	
+	return std::sqrt(dist);
+}
+
 void Image_info::read_Auxililiary()
 {
+	// Detect if auxiliary information has already been read
+	if (aux_exist) {
+		return;
+	}
+
 	// ===== Open input file stream =====
 	std::ifstream aux_in(aux_name.c_str(), std::ios::in | std::ios::binary);
 	assert(aux_in.is_open());
@@ -132,6 +168,11 @@ void Image_info::read_Auxililiary()
 
 void Image_info::read_Sift()
 {
+	// Detect if the Sift information has already been read
+	if (sift_exist) {
+		return;
+	}
+
 	// Have to read in auxiliary information before reading in sift
 	if (!aux_exist) {
 		std::cout << "Auxiliary iniformation does not exists ..." << std::endl;
@@ -185,6 +226,179 @@ void Image_info::read_Sift()
 	// Clean up buffer
 	delete[] coordinates;
 	delete[] descriptor;
+}
+
+float Image_info::compute_difference(
+	const cv::Mat& warped_,
+	const cv::Mat& mask_,
+	const bool greyScale
+)
+{
+	// Get height and width of the image
+	const int width		= image.cols;
+	const int height	= image.rows;
+	assert(width	== warped_.cols);
+	assert(height	== warped_.rows);
+	assert(width	== mask_.cols);
+	assert(height	== mask_.rows);
+
+	int diff = 0;
+	int pixel_cntr = 0;
+	int blank_pixels_cntr = 0;
+
+	if (greyScale) {
+		// Convert RGB image into grey image
+		cv::Mat warped_grey;
+		cv::Mat origin_grey;
+		cv::cvtColor(warped_, warped_grey, CV_RGB2GRAY);
+		cv::cvtColor(image, origin_grey, CV_RGB2GRAY);
+
+		// Compute the difference and calculate the number of blank pixels in the warped image	
+		for (int i = 0; i < height; i++) {
+			for (int j = 0; j < width; j++) {
+				if (mask_.at<uchar>(i, j) == 0 && warped_grey.at<uchar>(i, j) != 0) {
+					diff += abs(origin_grey.at<uchar>(i, j) - warped_grey.at<uchar>(i, j));
+					pixel_cntr++;
+				}
+				else if (warped_grey.at<uchar>(i, j) == 0) {
+					blank_pixels_cntr++;
+				}
+			}
+		}
+	}
+	else {
+		// Compute the difference and calculate the number of blank pixels in the warped image
+		for (int i = 0; i < height; i++) {
+			for (int j = 0; j < width; j++) {
+				if (mask_.at<uchar>(i, j) == 0 && warped_.at<cv::Vec3b>(i, j)[0] != 0
+					&& warped_.at<cv::Vec3b>(i, j)[1] != 0 && warped_.at<cv::Vec3b>(i, j)[2] != 0) {
+					diff += abs(image.at<cv::Vec3b>(i, j)[0] - warped_.at<cv::Vec3b>(i, j)[0]);
+					diff += abs(image.at<cv::Vec3b>(i, j)[1] - warped_.at<cv::Vec3b>(i, j)[1]);
+					diff += abs(image.at<cv::Vec3b>(i, j)[2] - warped_.at<cv::Vec3b>(i, j)[2]);
+					pixel_cntr++;
+				}
+				else if (warped_.at<cv::Vec3b>(i, j)[0] == 0 && warped_.at<cv::Vec3b>(i, j)[1] == 0 && warped_.at<cv::Vec3b>(i, j)[2] == 0) {
+					blank_pixels_cntr++;
+				}
+			}
+		}
+	}
+	
+	// If there is less than a certain percentage of pixels overlap, the pair is rejected
+	return (1.0 - (blank_pixels_cntr * 1.0f / (width * height)) > OVERLAP_THRESHOLD) ? (diff * 1.0f) / pixel_cntr : -2;
+}
+
+float Image_info::compute_difference_gist_color(
+	const cv::Mat& warped_,
+	const cv::Mat& mask_
+)
+{
+	// Get height and width of the image
+	const int width  = image.cols;
+	const int height = image.rows;
+	assert(width				== warped_.cols);
+	assert(height				== warped_.rows);
+	assert(width				== mask_.cols);
+	assert(height				== mask_.rows);
+	assert(image.channels()		== 3);
+	assert(warped_.channels()	== 3);
+
+	cv::Mat image_cpy  = image.clone();
+	cv::Mat warped_cpy = warped_.clone();
+
+	// Mask out the two images
+	//for (int i = 0; i < height; i++) {
+	//	for (int j = 0; j < width; j++) { 
+	//		if (mask_.at<uchar>(i, j) == 0) {
+	//			// Set original image blank
+	//			image_cpy.at<cv::Vec3b>(i, j)[0] = 0;
+	//			image_cpy.at<cv::Vec3b>(i, j)[1] = 0;
+	//			image_cpy.at<cv::Vec3b>(i, j)[2] = 0;
+
+	//			// Set warped image blank
+	//			warped_cpy.at<cv::Vec3b>(i, j)[0] = 0;
+	//			warped_cpy.at<cv::Vec3b>(i, j)[1] = 0;
+	//			warped_cpy.at<cv::Vec3b>(i, j)[2] = 0;
+	//		}
+	//		else if (warped_cpy.at<cv::Vec3b>(i, j)[0] == 0 &&
+	//			warped_cpy.at<cv::Vec3b>(i, j)[1] == 0 &&
+	//			warped_cpy.at<cv::Vec3b>(i, j)[2] == 0) {
+
+	//			// Set original image blank
+	//			image_cpy.at<cv::Vec3b>(i, j)[0] = 0;
+	//			image_cpy.at<cv::Vec3b>(i, j)[1] = 0;
+	//			image_cpy.at<cv::Vec3b>(i, j)[2] = 0;
+	//		}
+	//	}
+	//}
+
+	std::vector<float> desc1 = Image_info::compute_gist(image_cpy);
+	std::vector<float> desc2 = Image_info::compute_gist(warped_cpy);
+	float dist = Image_info::compute_gist_dist(desc1, desc2);
+
+	return dist;
+}
+
+void Image_info::display_keypoints()
+{
+	// Define dot color
+	cv::Scalar color(0, 255, 0);
+
+	// Draw points on the canvas
+	cv::Mat image_disp = image.clone();
+	for (int i = 0; i < feat_num; i++) {
+		cv::Point pt(keypoints_mat(0, i), keypoints_mat(1, i));
+		cv::circle(image_disp, pt, 1, color, 3);
+	}
+
+	cv::imshow("Keypoints", image_disp);
+	cv::waitKey();
+}
+
+cv::Mat Image_info::blendImages(const cv::Mat& A, const cv::Mat& B)
+{
+	cv::Mat blended_img;
+	cv::addWeighted(A, 0.5, B, 0.5, 0.0, blended_img);
+
+	return blended_img;
+}
+
+void Image_info::freeSpace()
+{
+	// Manually free the space of the Eigen structure
+	auxInfo_mat.resize(2, 0);
+	keypoints_mat.resize(6, 0);
+	descriptor_mat.resize(128, 0);
+}
+
+int Image_info::getHeight()
+{
+	return height;
+}
+
+int Image_info::getWidth()
+{
+	return width;
+}
+
+std::string Image_info::getImageName()
+{
+	return img_name;
+}
+
+bool Image_info::getSiftStatus()
+{
+	return sift_exist;
+}
+
+bool Image_info::getAuxStatus()
+{
+	return aux_exist;
+}
+
+cv::Mat Image_info::getImage()
+{
+	return image;
 }
 
 Eigen::Matrix<float, 2, Eigen::Dynamic> Image_info::get_coordinates()
