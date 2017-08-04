@@ -178,9 +178,9 @@ void Matching::display_matchings(
 	for (int i = 0; i < matching_number; i++) {
 
 		// Display only a portion of the keypoints
-		//if (i % 13 != 0 || i % 15 != 0) {
-		//	continue;
-		//}
+		if (i % 13 != 0 || i % 15 != 0) {
+			continue;
+		}
 
 		const int upper_index = matchings(0, i);
 		const int lower_index = matchings(1, i);

@@ -419,6 +419,56 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 	return graphs;
 }
 
+std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_validate_grouped_nodes(
+	const bool minimum_guided_,
+	const Eigen::MatrixXf& scores_,
+	std::vector<std::vector<int>> grouped_nodes_
+)
+{
+
+}
+
+Eigen::MatrixXf Matching_control::construct_score_grouped_nodes(
+	const Eigen::MatrixXf&			origin_score_,
+	std::vector<std::vector<int>>&	grouped_nodes_
+)
+{
+	// Note, only upper triangle is used
+	const int group_number = grouped_nodes_.size();
+	Eigen::MatrixXf new_score = Eigen::MatrixXf::Ones(group_number, group_number) * -1;
+
+	for (int i = 0; i < group_number - 1; i++) {
+		for (int j = i + 1; j < group_number; j++) {
+
+			std::vector<float> score_record;
+			for (int ii = 0; ii < grouped_nodes_[i].size(); ii++) {
+				for (int jj = 0; jj < grouped_nodes_[j].size(); jj++) {
+
+					int left_index		= grouped_nodes_[i][ii];
+					int right_index		= grouped_nodes_[j][jj];
+					assert(left_index	!= right_index);
+
+					if (left_index > right_index) {
+						int swap_tmp	= left_index;
+						left_index		= right_index;
+						right_index		= swap_tmp;
+					}
+
+					score_record.push_back(origin_score_(left_index, right_index));
+				}
+			}
+
+			// Metric one: average score
+			float avg_score = std::accumulate(score_record.begin(), score_record.end(), 0) / score_record.size();
+			
+			// Set the new score matrix
+			new_score(i, j) = avg_score;
+		}
+	}
+
+	return new_score;
+}
+
 Eigen::MatrixXf Matching_control::compute_gist_dist_all()
 {
 	// This function is for experiment purpose

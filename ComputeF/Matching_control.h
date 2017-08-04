@@ -71,6 +71,12 @@ public:
 		const bool	use_outlier_mask_ = false
 	);
 
+	// Construct a new score matrix for the grouped nodes
+	Eigen::MatrixXf construct_score_grouped_nodes(
+		const Eigen::MatrixXf&			origin_score_,
+		std::vector<std::vector<int>>&	grouped_nodes_
+	);
+
 	// Construct graph using the provided scores
 	std::vector<Graph_disamb> constructGraph(
 		const bool minmum_guided,

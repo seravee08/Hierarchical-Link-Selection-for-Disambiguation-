@@ -10,7 +10,7 @@ using namespace cv;
 int main()
 {
 	// Declare path to the image list
-	std::string image_list_path = "C:/Users/fango/OneDrive/Documents/GitHub/ComputeF/data/fc/image_list.txt";
+	std::string image_list_path = "C:/Users/fango/OneDrive/Documents/GitHub/ComputeF/data/top-top/image_list.txt";
 
 	Matching_control match_ctrl(image_list_path);
 	// match_ctrl.readIn_Keypoints();
