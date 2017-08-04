@@ -78,6 +78,11 @@ int Matching_control::getMatch_number(
 	return match.get_matching_number(left_image, right_image);
 }
 
+cv::Mat Matching_control::get_image(int index_)
+{
+	return img_ctrl.getImage(index_);
+}
+
 float Matching_control::getWarped_diff_value(
 	const int	left_index_,
 	const int	right_index_
@@ -377,7 +382,7 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 					else {
 						value_diff = getWarped_diff_value(src_index, dst_index);
 					}
-					
+	
 					if (value_diff < best_link_score && value_diff > 0) {
 						best_link_score = value_diff;
 						best_link_index = i;
@@ -400,6 +405,8 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 				// No link can be found
 				break;
 			}
+
+			std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num << "% completes ..." << std::endl;
 		}
 
 		// Push the current graph into the storage

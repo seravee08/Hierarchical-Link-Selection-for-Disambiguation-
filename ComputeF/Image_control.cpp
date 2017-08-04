@@ -68,6 +68,20 @@ void Image_control::read_single_Sift(int index_)
 	}
 }
 
+void Image_control::displayImage(int index_)
+{
+	const cv::Mat& target = getImageInfo(index_).getImage();
+	const std::string name = "Image" + std::to_string(index_);
+
+	cv::imshow(name.c_str(), target);
+	cv::waitKey();
+}
+
+cv::Mat Image_control::getImage(int index_)
+{
+	return getImageInfo(index_).getImage();
+}
+
 Image_info Image_control::getImageInfo(int index_)
 {
 	return image_list[index_];

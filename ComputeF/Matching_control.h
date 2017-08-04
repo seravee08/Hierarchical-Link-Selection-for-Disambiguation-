@@ -40,6 +40,9 @@ public:
 	// Return number of images
 	int getImage_num();
 
+	// Get image
+	cv::Mat get_image(int index_);
+
 	// Return the matrix of warped difference
 	Eigen::MatrixXf getWarped_diff_mat();
 

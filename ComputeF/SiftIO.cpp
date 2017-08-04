@@ -248,19 +248,21 @@ float Image_info::compute_difference(
 
 	if (greyScale) {
 		// Convert RGB image into grey image
-		cv::Mat warped_grey;
-		cv::Mat origin_grey;
+		cv::Mat warped_grey, equalized_warped_grey;
+		cv::Mat origin_grey, equalized_origin_grey;
 		cv::cvtColor(warped_, warped_grey, CV_RGB2GRAY);
 		cv::cvtColor(image, origin_grey, CV_RGB2GRAY);
+		cv::equalizeHist(warped_grey, equalized_warped_grey);
+		cv::equalizeHist(origin_grey, equalized_origin_grey);
 
 		// Compute the difference and calculate the number of blank pixels in the warped image	
 		for (int i = 0; i < height; i++) {
 			for (int j = 0; j < width; j++) {
-				if (mask_.at<uchar>(i, j) == 0 && warped_grey.at<uchar>(i, j) != 0) {
-					diff += abs(origin_grey.at<uchar>(i, j) - warped_grey.at<uchar>(i, j));
+				if (mask_.at<uchar>(i, j) == 0 && equalized_warped_grey.at<uchar>(i, j) != 0) {
+					diff += abs(equalized_origin_grey.at<uchar>(i, j) - equalized_warped_grey.at<uchar>(i, j));
 					pixel_cntr++;
 				}
-				else if (warped_grey.at<uchar>(i, j) == 0) {
+				else if (equalized_warped_grey.at<uchar>(i, j) == 0) {
 					blank_pixels_cntr++;
 				}
 			}

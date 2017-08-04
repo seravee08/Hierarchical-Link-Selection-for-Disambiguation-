@@ -23,6 +23,12 @@ public:
 	// Read in Sift information for a specific image
 	void read_single_Sift(int index_);
 
+	// Display specified image
+	void displayImage(int index_);
+
+	// Get image
+	cv::Mat getImage(int index_);
+
 	// Get number of images
 	int getImageNum();
 

@@ -15,9 +15,9 @@ int main()
 	Matching_control match_ctrl(image_list_path);
 	// match_ctrl.readIn_Keypoints();
 	match_ctrl.readIn_Matchings();
-	//match_ctrl.delete_bad_matchings();
-	//match_ctrl.compute_Homography();
-	//match_ctrl.rectify_matching_homoMask();
+	// match_ctrl.delete_bad_matchings();
+	// match_ctrl.compute_Homography();
+	// match_ctrl.rectify_matching_homoMask();
 
 	//const int number_image = match_ctrl.getImage_num();
 	//for (int i = 0; i < number_image - 1; i++) {
