@@ -22,9 +22,18 @@ public:
 		int desti_index_
 	);
 
+	// Return the status for a node
+	int get_node_status(int index_);
+
+	// Return the number of nodes in the graph
+	int number_nodes_inGraph();
+
 private:
 	const int node_num;
 
+	// The status of each node
+	std::vector<int> node_status;
+		
 	// Layout of the graph, only upper triangle is used !
 	Eigen::MatrixXi layOut;
 };

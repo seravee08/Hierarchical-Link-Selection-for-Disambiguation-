@@ -5,6 +5,8 @@
 #include <vector>
 #include <stdlib.h>
 
+#include <opencv2/xfeatures2d.hpp>
+
 #include "SiftIO.h"
 #include "Parameters.h"
 #include "standalone_image.h"
@@ -26,6 +28,17 @@ Image_info::Image_info(const std::string img_name_):
 {
 	image = cv::imread(img_name_.c_str(), CV_LOAD_IMAGE_COLOR);
 	assert(image.channels() == 3);
+
+	// Get the height and width of the image
+	width  = image.cols;
+	height = image.rows;
+
+	// Initialize the camera matrix for the current camera
+	K = (cv::Mat_<double>(3, 3)
+		<<	35,	0,	width / 2.0,
+			0,	35,	height / 2.0,
+			0,	0,	1
+		);
 }
 
 void Image_info::splitFilename(
@@ -114,11 +127,16 @@ void Image_info::read_Auxililiary()
 
 	// Read in Basic information
 	int tilts;
+	int aux_width;
+	int aux_height;
 
-	aux_in.read((char*)&width,		_SIZE_INT);
-	aux_in.read((char*)&height,		_SIZE_INT);
+	aux_in.read((char*)&aux_width,	_SIZE_INT);
+	aux_in.read((char*)&aux_height,	_SIZE_INT);
 	aux_in.read((char*)&feat_num,	_SIZE_INT);
 	aux_in.read((char*)&tilts,		_SIZE_INT);
+
+	assert(aux_width  == width);
+	assert(aux_height == height);
 
 	// Read in rotation information
 	int* rots = new int[tilts];
@@ -228,15 +246,34 @@ void Image_info::read_Sift()
 	delete[] descriptor;
 }
 
+void Image_info::compute_Sift() {
+
+	// Initiate SIFT detector
+	cv::Ptr<cv::Feature2D> f2d = cv::xfeatures2d::SIFT::create();
+
+	if (image.channels() == 3) {
+		cv::Mat gray_img;
+		cv::cvtColor(image, gray_img, cv::COLOR_BGR2GRAY);
+		f2d->detect(gray_img, keypoints);
+		f2d->compute(gray_img, keypoints, descriptors);
+	}
+	else {
+		assert(image.channels() == 1);
+		f2d->detect(image, keypoints);
+		f2d->compute(image, keypoints, descriptors);
+	}
+
+	sift_exist	= true;
+	feat_num	= keypoints.size();
+}
+
 float Image_info::compute_difference(
 	const cv::Mat& warped_,
 	const cv::Mat& mask_,
 	const bool greyScale
 )
 {
-	// Get height and width of the image
-	const int width		= image.cols;
-	const int height	= image.rows;
+	// Validate height and width of the image
 	assert(width	== warped_.cols);
 	assert(height	== warped_.rows);
 	assert(width	== mask_.cols);
@@ -295,9 +332,7 @@ float Image_info::compute_difference_gist_color(
 	const cv::Mat& mask_
 )
 {
-	// Get height and width of the image
-	const int width  = image.cols;
-	const int height = image.rows;
+	// Validate height and width of the image
 	assert(width				== warped_.cols);
 	assert(height				== warped_.rows);
 	assert(width				== mask_.cols);
@@ -357,6 +392,21 @@ void Image_info::display_keypoints()
 	cv::waitKey();
 }
 
+void Image_info::display_keypoints_locally_computed()
+{
+	// Define dot color
+	cv::Scalar color(0, 255, 0);
+
+	// Draw points on the canvas
+	cv::Mat image_disp = image.clone();
+	for (int i = 0; i < feat_num; i++) {
+		cv::circle(image_disp, keypoints[i].pt, 1, color, 3);
+	}
+
+	cv::imshow("Keypoints", image_disp);
+	cv::waitKey();
+}
+
 cv::Mat Image_info::blendImages(const cv::Mat& A, const cv::Mat& B)
 {
 	cv::Mat blended_img;
@@ -371,6 +421,16 @@ void Image_info::freeSpace()
 	auxInfo_mat.resize(2, 0);
 	keypoints_mat.resize(6, 0);
 	descriptor_mat.resize(128, 0);
+}
+
+std::vector<cv::KeyPoint> Image_info::getKeypoints_locally_computed()
+{
+	return keypoints;
+}
+
+cv::Mat Image_info::getDescriptors_locally_computed()
+{
+	return descriptors;
 }
 
 int Image_info::getHeight()
@@ -403,7 +463,32 @@ cv::Mat Image_info::getImage()
 	return image;
 }
 
+cv::Mat Image_info::getK()
+{
+	return K;
+}
+
 Eigen::Matrix<float, 2, Eigen::Dynamic> Image_info::get_coordinates()
 {
 	return keypoints_mat.topRows(2);
+}
+
+Eigen::Matrix<float, 2, Eigen::Dynamic> Image_info::get_coordinates_locally_computed()
+{
+	const int local_feat_num = keypoints.size();
+	if (local_feat_num <= 0) {
+		std::cout << "No locally computed Sift points detected, exiting ..." << std::endl;
+	}
+
+	std::vector<float> coordinates(2 * local_feat_num);
+	for (int i = 0; i < local_feat_num; i++) {
+		coordinates[2 * i]		= keypoints[i].pt.x;
+		coordinates[2 * i + 1]	= keypoints[i].pt.y;
+	}
+
+	Eigen::Matrix<float, 2, Eigen::Dynamic> coordinates_mat(2, local_feat_num);
+	coordinates_mat = Eigen::Map<Eigen::Matrix<float, 2, Eigen::Dynamic>>(coordinates.data(), 2, local_feat_num);
+	coordinates.clear();
+
+	return coordinates_mat;
 }

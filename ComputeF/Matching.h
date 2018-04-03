@@ -21,6 +21,14 @@ public:
 	// Read in matchings 
 	void read_matchings();
 
+	// Compute matchings
+	void compute_Matchings(
+		Image_info& image_left_,
+		Image_info& image_right_,
+		int left_index_,
+		int right_index_
+	);
+
 	// Write matches out into .txt file
 	void write_matches(std::vector<Graph_disamb>& graphs_);
 
@@ -43,7 +51,8 @@ public:
 	void display_matchings(
 		Image_info& image_left_,
 		Image_info& image_right_,
-		cv::Mat&	mask_ = cv::Mat(1, 1, CV_8U)
+		cv::Mat&	mask_ = cv::Mat(1, 1, CV_8U),
+		bool		locally_computed = false
 	);
 
 	// Compute fundamental matrix and related homographies for two images
@@ -62,6 +71,35 @@ public:
 		Image_info& image_right_,
 		cv::Mat&	H_,
 		cv::Mat&	left_warped_
+	);
+
+	// Triangulate points and check reprojection error
+	bool Matching::triangulateAndCheckReproj(
+		const cv::Mat&				P1,
+		const cv::Mat&				P2,
+		std::vector<cv::Point2f>&	points1,
+		std::vector<cv::Point2f>&	points2,
+		const cv::Mat&				points1_mat,
+		const cv::Mat&				points2_mat,
+		const cv::Mat&				K1,
+		const cv::Mat&				K2,
+		cv::Mat&					pts_3d
+	);
+
+	// Calculate camera pose
+	bool cameraPoseAndTriangulationFromFundamental(
+		Image_info& image_left_,
+		Image_info& image_right_,
+		bool		locally_computed_ = false
+	);
+
+	// Decompose Essential matrix to rotation and translation matrices
+	bool decomposeEtoRandT(
+		cv::Mat_<double>& E,
+		cv::Mat_<double>& R1,
+		cv::Mat_<double>& R2,
+		cv::Mat_<double>& t1,
+		cv::Mat_<double>& t2
 	);
 
 	// Get matching matrix by index
@@ -98,6 +136,12 @@ public:
 
 	// Rectify matchings according to homography mask
 	void rectify_matchings_homoMask();
+
+	// Output the 3D points cloud as .ply file
+	static void points_to_ply(
+		const std::string file_path,
+		const cv::Mat& pts_3d
+	);
 
 private:
 	int image_num;

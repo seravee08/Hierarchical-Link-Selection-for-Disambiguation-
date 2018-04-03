@@ -8,6 +8,7 @@
 class Image_control {
 public:
 	Image_control(const std::string image_list_path_);
+	Image_control(const std::vector<std::string>& image_names);
 
 	~Image_control();
 
@@ -16,6 +17,9 @@ public:
 
 	// Read in Sift information for all images
 	void read_Sift();
+
+	// Compute Sift feature using OpenCV functions locally
+	void compute_Sift(int index = -1);
 
 	// Read in auxiliary information for a specific image
 	void read_single_Auxiliary(int index_);
@@ -34,6 +38,15 @@ public:
 
 	// Get image information by index
 	Image_info getImageInfo(int index_);
+
+	// Display group
+	void display_group(std::vector<int> group);
+
+	// Return the maximum width and height of the image list
+	bool return_max_width_height(int& maxWidth_, int& maxHeight_);
+
+	// Return the minimum width and height of the image list
+	bool return_min_width_height(int& minWidth_, int& minHeight_);
 
 private:
 	int image_num;

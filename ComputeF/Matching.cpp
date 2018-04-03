@@ -4,10 +4,11 @@
 #include <cassert>
 #include <stdlib.h>
 
-#include "opencv2/calib3d.hpp"
-#include "opencv2/highgui.hpp"
-#include "opencv2/imgproc.hpp"
-#include "opencv2/highgui.hpp"
+#include <opencv2/calib3d.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/features2d.hpp>
+#include <opencv2/xfeatures2d.hpp>
 
 #include "Matching.h"
 #include "Parameters.h"
@@ -32,6 +33,10 @@ Matching::Matching(const std::string image_list_path_) :
 
 		// Check for duplicate image names
 		if (std::find(img_names.begin(), img_names.end(), name) != img_names.end()) {
+			continue;
+		}
+		// Check for empty names
+		if (name.length() <= 0) {
 			continue;
 		}
 		img_names.push_back(name);
@@ -123,10 +128,67 @@ void Matching::read_matchings()
 	}
 }
 
+void Matching::compute_Matchings(
+	Image_info& image_left_,
+	Image_info& image_right_,
+	int left_index_,
+	int right_index_
+) 
+{
+	if (image_left_.getSiftStatus() == true && image_right_.getSiftStatus() == true) {
+		// Create matcher
+		cv::BFMatcher matcher(cv::NORM_L2);
+		std::vector<std::vector<cv::DMatch>> matches;
+
+		matcher.knnMatch(
+			image_left_.getDescriptors_locally_computed(),
+			image_right_.getDescriptors_locally_computed(),
+			matches,
+			2);
+
+		// Find good matches
+		std::vector<int> upper_row;
+		std::vector<int> lower_row;
+		upper_row.reserve(matches.size());
+		lower_row.reserve(matches.size());
+
+		for (int i = 0; i < matches.size(); i++) {
+			assert(matches[i].size() == 2);
+			if (matches[i][0].distance < SIFT_GOOD_THRESHOLD * matches[i][1].distance) {
+				upper_row.push_back(matches[i][0].queryIdx);
+				lower_row.push_back(matches[i][0].trainIdx);
+			}
+		}
+
+		// Load the buffers into Eigen matrix structure
+		assert(upper_row.size() == lower_row.size());
+		const int matching_number = upper_row.size();
+		Eigen::Matrix<int, 1, Eigen::Dynamic> upper_row_mat(1, matching_number);
+		Eigen::Matrix<int, 1, Eigen::Dynamic> lower_row_mat(1, matching_number);
+		Eigen::Matrix<int, 2, Eigen::Dynamic> matchings_mat(2, matching_number);
+
+		upper_row_mat = Eigen::Map<Eigen::Matrix<int, 1, Eigen::Dynamic>>(upper_row.data(), 1, matching_number);
+		lower_row_mat = Eigen::Map<Eigen::Matrix<int, 1, Eigen::Dynamic>>(lower_row.data(), 1, matching_number);
+		matchings_mat << upper_row_mat, lower_row_mat;
+
+		assert(left_index_ < right_index_);
+		matching_mat[left_index_][right_index_] = matchings_mat;
+		matching_number_mat(left_index_, right_index_) = matching_number;
+
+		// Increase the pair of matchings counter by 1
+		pair_num++;
+	}
+	else {
+		std::cout << "One or more of the required Sift keypoints does/do not exist ..." << std::endl;
+		exit(-1);
+	}
+}
+
 void Matching::display_matchings(
 	Image_info& image_left_,
 	Image_info& image_right_,
-	cv::Mat&	mask_
+	cv::Mat&	mask_,
+	bool		locally_computed
 )
 {
 	// Define color for the keypoint
@@ -162,8 +224,8 @@ void Matching::display_matchings(
 	const int rheight = image_right_.getHeight();
 
 	// Get keypoints coordinates
-	const Eigen::Matrix<float, 2, Eigen::Dynamic>& coords1 = image_left_.get_coordinates();
-	const Eigen::Matrix<float, 2, Eigen::Dynamic>& coords2 = image_right_.get_coordinates();
+	const Eigen::Matrix<float, 2, Eigen::Dynamic>& coords1 = (locally_computed)? image_left_.get_coordinates_locally_computed() : image_left_.get_coordinates();
+	const Eigen::Matrix<float, 2, Eigen::Dynamic>& coords2 = (locally_computed)? image_right_.get_coordinates_locally_computed(): image_right_.get_coordinates();
 
 	// Declare a new container and fill it with the two images
 	cv::Mat concatenated(std::max(lheight, rheight), lwidth + rwidth, CV_8UC3, cv::Scalar(0));
@@ -297,8 +359,8 @@ void Matching::compute_fundamental(
 	const int widthr  = image_right_.getWidth();
 
 	// Load the coordinates into opencv structures
-	std::vector<cv::Point2f> points1(matching_number);
-	std::vector<cv::Point2f> points2(matching_number);
+	std::vector<cv::Point2f> points1;
+	std::vector<cv::Point2f> points2;
 	points1.reserve(matching_number);
 	points2.reserve(matching_number);
 
@@ -388,6 +450,266 @@ void Matching::compute_homography(
 	// Store the outlier_mask and set the indicator to 1
 	outlier_mask_mat[left_index][right_index] = outlier_mask;
 	homography_existence_indicator(left_index, right_index) = true;
+}
+
+bool Matching::cameraPoseAndTriangulationFromFundamental(
+	Image_info& image_left_,
+	Image_info& image_right_,
+	bool		locally_computed_
+)
+{
+	// Get indices for the left and right images
+	int left_index  = std::find(img_names.begin(), img_names.end(), image_left_.getImageName()) - img_names.begin();
+	int right_index = std::find(img_names.begin(), img_names.end(), image_right_.getImageName()) - img_names.begin();
+
+	if (left_index >= image_num || right_index >= image_num) {
+		std::cout << "Cannot find image names in the storage ..." << std::endl;
+		exit(1);
+	}
+	assert(left_index < right_index);
+
+	// Retrieve matching number
+	const int matching_number = matching_number_mat(left_index, right_index);
+	assert(matching_number > 0);
+
+	// Retrieve matching matrix
+	const Eigen::Matrix<int, 2, Eigen::Dynamic>& matchings = matching_mat[left_index][right_index];
+
+	// Get keypoints coordinates
+	const Eigen::Matrix<float, 2, Eigen::Dynamic>& coords1 = (locally_computed_)? image_left_.get_coordinates_locally_computed() : image_left_.get_coordinates();
+	const Eigen::Matrix<float, 2, Eigen::Dynamic>& coords2 = (locally_computed_)? image_right_.get_coordinates_locally_computed() : image_right_.get_coordinates();
+
+	// Get height and width of the two images
+	const int heightl	= image_left_.getHeight();
+	const int widthl	= image_left_.getWidth();
+	const int heightr	= image_right_.getHeight();
+	const int widthr	= image_right_.getWidth();
+
+	// Load the coordinates into opencv structures
+	std::vector<cv::Point2f> points1;
+	std::vector<cv::Point2f> points2;
+	points1.reserve(matching_number);
+	points2.reserve(matching_number);
+
+	for (int i = 0; i < matching_number; i++) {
+		const int upper_index = matchings(0, i);
+		const int lower_index = matchings(1, i);
+
+		const float x_upper = coords1(0, upper_index);
+		const float y_upper = coords1(1, upper_index);
+		const float x_lower = coords2(0, lower_index);
+		const float y_lower = coords2(1, lower_index);
+
+		if (x_upper < widthl && y_upper < heightl && x_lower < widthr && y_lower < heightr &&
+			x_upper >= 0 && y_upper >= 0 && x_lower >= 0 && y_lower >= 0) {
+			points1.push_back(cv::Point2f(x_upper, y_upper));
+			points2.push_back(cv::Point2f(x_lower, y_lower));
+		}
+	}
+
+	// Load the valid coordinates into the opencv mat strucutres
+	assert(points1.size() == points2.size());
+	const int valid_points = points1.size();
+
+	cv::Mat points1_mat(1, valid_points, CV_32FC2);
+	cv::Mat points2_mat(1, valid_points, CV_32FC2);
+
+	for (int i = 0; i < valid_points; i++) {
+		points1_mat.at<cv::Point2f>(i) = points1[i];
+		points2_mat.at<cv::Point2f>(i) = points2[i];
+	}
+
+	// ===== Compute Fundamental Matrix =====
+	double minVal;
+	double maxVal;
+	std::vector<uchar> points_status;
+	cv::minMaxIdx(points1, &minVal, &maxVal);
+
+	cv::Mat F = cv::findFundamentalMat(points1, points2, CV_FM_RANSAC, 0.006 * maxVal, 0.99, points_status);
+	const int inliers_num = cv::countNonZero(points_status);
+	std::cout << "Image pair (" << left_index << "," << right_index << ") inliers percentage: " << inliers_num * 1.0f / points_status.size() * 100 << "%" << std::endl;
+
+	// Retrieve the K matrices for the two cameras
+	const cv::Mat K1 = image_left_.getK();
+	const cv::Mat K2 = image_right_.getK();
+
+	if (inliers_num > MIN_INLIERS) {
+		// Calculate essential matrix from fundamental matrix
+		cv::Mat_<double> E = K2.t() * F * K1;
+
+		if (std::fabsf(cv::determinant(E)) > 1e-07) {
+			std::cout << "Determinant of E not equal to 0: " << cv::determinant(E) << std::endl;
+			return false;
+		}
+
+		cv::Mat_<double> R1(3, 3);
+		cv::Mat_<double> R2(3, 3);
+		cv::Mat_<double> t1(1, 3);
+		cv::Mat_<double> t2(1, 3);
+
+		if (!decomposeEtoRandT(E, R1, R2, t1, t2)) {
+			return false;
+		}
+
+		if (cv::determinant(R1) + 1.0 < 1e-09) {
+			std::cout << "Determinant of R equals to -1, flipping sign" << std::endl;
+			E = -E;
+
+			if (!decomposeEtoRandT(E, R1, R2, t1, t2)) {
+				return false;
+			}
+		}
+
+		if (std::fabsf(cv::determinant(R1)) - 1.0 > 1e-07) {
+			std::cout << "Determinant of R not equal to +-1.0, this is not a rotation matrix" << std::endl;
+			return false;
+		}
+
+		// Projection matrix of left camera
+		cv::Mat P1 = cv::Mat::eye(3, 4, CV_64FC1);
+		cv::Mat P2 = (cv::Mat_<double>(3, 4) <<
+			R1(0, 0), R1(0, 1), R1(0, 2), t1(0),
+			R1(1, 0), R1(1, 1), R1(1, 2), t1(1),
+			R1(2, 0), R1(2, 1), R1(2, 2), t1(2)
+			);
+
+		cv::Mat pts_3d;
+		bool triangulationSucceeded = true;
+		if (!triangulateAndCheckReproj(P1, P2, points1, points2, points1_mat, points2_mat, K1, K2, pts_3d)) {
+			P2 = (cv::Mat_<double>(3, 4) <<
+				R1(0, 0), R1(0, 1), R1(0, 2), t2(0),
+				R1(1, 0), R1(1, 1), R1(1, 2), t2(1),
+				R1(2, 0), R1(2, 1), R1(2, 2), t2(2)
+				);
+
+			if (!triangulateAndCheckReproj(P1, P2, points1, points2, points1_mat, points2_mat, K1, K2, pts_3d)) {
+				P2 = (cv::Mat_<double>(3, 4) <<
+					R2(0, 0), R2(0, 1), R2(0, 2), t2(0),
+					R2(1, 0), R2(1, 1), R2(1, 2), t2(1),
+					R2(2, 0), R2(2, 1), R2(2, 2), t2(2)
+					);
+
+				if (!triangulateAndCheckReproj(P1, P2, points1, points2, points1_mat, points2_mat, K1, K2, pts_3d)) {
+					P2 = (cv::Mat_<double>(3, 4) <<
+						R2(0, 0), R2(0, 1), R2(0, 2), t1(0),
+						R2(1, 0), R2(1, 1), R2(1, 2), t1(1),
+						R2(2, 0), R2(2, 1), R2(2, 2), t1(2)
+						);
+
+					if (!triangulateAndCheckReproj(P1, P2, points1, points2, points1_mat, points2_mat, K1, K2, pts_3d)) {
+						std::cout << "Cannot find te right projection matrix ..." << std::endl;
+						triangulationSucceeded = false;
+					}
+				}
+			}
+		}
+
+
+		// Output the 3D points as .ply file to be viewed in meshViewer
+		if (triangulationSucceeded) {
+
+			std::string path;
+			std::string name;
+			Image_info::splitFilename(image_list_path, path, name);
+			std::string composed_name = path + "/" + std::to_string(left_index) + "_" + std::to_string(right_index) + ".ply";
+			points_to_ply(composed_name, pts_3d);
+		}
+
+		return triangulationSucceeded;
+	}
+
+	return false;
+}
+
+bool Matching::triangulateAndCheckReproj(
+	const cv::Mat&				P1,
+	const cv::Mat&				P2,
+	std::vector<cv::Point2f>&	points1,
+	std::vector<cv::Point2f>&	points2,
+	const cv::Mat&				points1_mat,
+	const cv::Mat&				points2_mat,
+	const cv::Mat&				K1,
+	const cv::Mat&				K2,
+	cv::Mat&					pts_3d
+)
+{
+	const int valid_points = points1_mat.cols;
+	assert(points2_mat.cols == valid_points);
+	assert(points1.size() == points2.size());
+	assert(points1.size() == valid_points);
+
+	// Undistort points
+	cv::Mat normalized_points1;
+	cv::Mat normalized_points2;
+
+	cv::undistortPoints(points1_mat, normalized_points1, K1, cv::Mat());
+	cv::undistortPoints(points2_mat, normalized_points2, K2, cv::Mat());
+
+	// Triangulate points
+	cv::Mat pts_3d_homo(4, valid_points, CV_32FC1);
+	cv::triangulatePoints(P1, P2, normalized_points1, normalized_points2, pts_3d_homo);
+	cv::convertPointsFromHomogeneous(cv::Mat(pts_3d_homo.t()).reshape(4, 1), pts_3d);
+	assert(pts_3d.rows == valid_points);
+
+	// Compute how many points are in front of the camera
+	std::vector<uchar> points_status(valid_points, 0);
+	for (int i = 0; i < valid_points; i++) {
+		points_status[i] = (pts_3d.at<cv::Point3f>(i).z > 0) ? 1 : 0;
+	}
+	const int num_inFrontOfCamera = cv::countNonZero(points_status);
+
+	float points_inFrontOfCamera_ratio = num_inFrontOfCamera * 1.0f / valid_points;
+	std::cout << points_inFrontOfCamera_ratio * 100 << "% points are in front of the camera ..." << std::endl;
+	if (points_inFrontOfCamera_ratio < 0.75) {
+		return false;
+	}
+
+	// Calculate reprojection
+	cv::Vec3f rvec(0, 0, 0);
+	cv::Vec3f tvec(0, 0, 0);
+	std::vector<cv::Point2f> reprojected_pt_set;
+	cv::projectPoints(pts_3d, rvec, tvec, K1, cv::Mat(), reprojected_pt_set);
+	float reprojectionErr = cv::norm(cv::Mat(reprojected_pt_set), cv::Mat(points1), cv::NORM_L2) * 1.0f / valid_points;
+	std::cout << "Reprojection error: " << reprojectionErr << std::endl;
+
+	if (reprojectionErr < 5) {
+		return true;
+	}
+
+	return false;
+}
+
+bool Matching::decomposeEtoRandT(
+	cv::Mat_<double>& E,
+	cv::Mat_<double>& R1,
+	cv::Mat_<double>& R2,
+	cv::Mat_<double>& t1,
+	cv::Mat_<double>& t2
+)
+{
+	cv::SVD svd(E, cv::SVD::MODIFY_A);
+
+	// Check if first and second singular values are the same (should be the same)
+	double singular_values_ratio = std::fabsf(svd.w.at<double>(0) / svd.w.at<double>(1));
+	
+	if (singular_values_ratio > 1.0) {
+		singular_values_ratio = 1.0 / singular_values_ratio;
+	}
+
+	if (singular_values_ratio < 0.7) {
+		std::cout << "Singular values of essential matrix are too far apart" << std::endl;
+		return false;
+	}
+
+	cv::Mat W  = (cv::Mat_<double>(3, 3) << 0, -1, 0, 1, 0, 0, 0, 0, 1);
+	cv::Mat Wt = (cv::Mat_<double>(3, 3) << 0, 1, 0, -1, 0, 0, 0, 0, 1);
+
+	R1 = svd.u * W * svd.vt;
+	R2 = svd.u * Wt * svd.vt;
+	t1 = svd.u.col(2);
+	t2 = -svd.u.col(2);
+
+	return true;
 }
 
 int Matching::get_matchings(
@@ -643,6 +965,40 @@ void Matching::write_layout(std::vector<Graph_disamb>& graphs_)
 		// Close the output stream
 		layout_out.close();
 	}
+}
+
+void Matching::points_to_ply(
+	const std::string file_path,
+	const cv::Mat& pts_3d
+)
+{
+	// Create output file stream
+	std::ofstream points_out(file_path.c_str(), std::ios::out);
+	assert(points_out.is_open());
+
+	// Validate the 3D points
+	assert(pts_3d.cols == 1);
+	assert(pts_3d.rows >= 1);
+	assert(pts_3d.channels() == 3);
+	const int points_num = pts_3d.rows;
+
+	// Compose the header for ply file
+	points_out << "ply" << std::endl;
+	points_out << "format ascii 1.0" << std::endl;
+	points_out << "element vertex " << points_num << std::endl;
+	points_out << "property float32 x" << std::endl;
+	points_out << "property float32 y" << std::endl;
+	points_out << "property float32 z" << std::endl;
+	points_out << "end_header" << std::endl;
+
+	// Write out the 3D points coordinates
+	for (int i = 0; i < points_num; i++) {
+		const cv::Point3f& pt = pts_3d.at<cv::Point3f>(i);
+		points_out << pt.x << " " << pt.y << " " << pt.z << std::endl;
+	}
+
+	// Close the output stream
+	points_out.close();
 }
 
 void Matching::setWarped_diff(const int row_, const int col_, const float value)

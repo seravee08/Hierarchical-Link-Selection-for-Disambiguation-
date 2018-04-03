@@ -19,6 +19,12 @@ public:
 	// Read in matchings
 	void readIn_Matchings();
 
+	// Compute Sift feature using OpenCV functions locally
+	void compute_Sift(int index = -1);
+
+	// Compute matchings
+	void compute_Matchings(int left_index_ = -1, int right_index_ = -1);
+
 	// Write out matchings
 	void writeOut_Matchings(std::vector<Graph_disamb>& graphs_);
 
@@ -43,6 +49,12 @@ public:
 	// Get image
 	cv::Mat get_image(int index_);
 
+	// Return the maximum width and height of the image list
+	void return_max_width_height(int& maxWidth_, int& maxHeight_);
+
+	// Return the minimum width and height of the image list
+	void return_min_width_height(int& minWidth_, int& minHeight_);
+
 	// Return the matrix of warped difference
 	Eigen::MatrixXf getWarped_diff_mat();
 
@@ -51,6 +63,9 @@ public:
 
 	// Display keypoints for an image
 	void displayKeypoints(int index_);
+
+	// Display the group status of current round
+	void showGroupStatus(const std::vector<std::vector<std::vector<int>>>& split_results_);
 		
 	// Return the number of matches between the image pair
 	int getMatch_number(
@@ -68,7 +83,8 @@ public:
 	void displayMatchings(
 		const int	left_index_,
 		const int	right_index_,
-		const bool	use_outlier_mask_ = false
+		const bool	use_outlier_mask_ = false,
+		const bool  locally_computed  = false
 	);
 
 	// Construct a new score matrix for the grouped nodes
@@ -77,16 +93,105 @@ public:
 		std::vector<std::vector<int>>&	grouped_nodes_
 	);
 
+	// Construct a new score matrix for the grouped nodes, only top N pairs are considered
+	Eigen::MatrixXf construct_score_grouped_nodes_topN(
+		const bool						minimum_guided_,
+		const Eigen::MatrixXf&			origin_score_,
+		std::vector<std::vector<int>>&	grouped_nodes_
+	);
+
+	// Translate the relative indices into absolute indices
+	void translate_indices(
+		std::vector<int>	grand_indices_,
+		std::vector<int>&	upper_set_,
+		std::vector<int>&	lower_set_
+	);
+
 	// Construct graph using the provided scores
 	std::vector<Graph_disamb> constructGraph(
 		const bool minmum_guided,
 		const Eigen::MatrixXf& scores
 	);
 
+	// Split the graph
+	std::vector<std::vector<std::vector<int>>> split_graph(
+		const bool						minimum_guided_,
+		const Eigen::MatrixXf&			origin_score_,
+		Graph_disamb&					graph_,
+		std::vector<std::vector<int>>	grouped_nodes_,
+		Graph_disamb*&					upper_graph_,
+		Graph_disamb*&					lower_graph_,
+		std::vector<int>&				upper_set,
+		std::vector<int>&				lower_set
+	);
+
+	// Split the nodes based on the input graph
+	std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
+		const bool						minimum_guided_,
+		const Eigen::MatrixXf&			origin_score_,
+		std::vector<std::vector<int>>	grouped_nodes_,
+		Graph_disamb&					graph_,
+		std::vector<std::vector<int>>&  split_indices
+	);
+
+	// Split the graph independent from the graph constructed for this round
+	std::vector<std::vector<std::vector<int>>> split_graph_independent_of_graph(
+		const bool						minimum_guided_,
+		const Eigen::MatrixXf&			origin_score_,
+		std::vector<std::vector<int>>	grouped_nodes_
+	);
+
+	// Iterative split the graph until certain condition is met
+	std::vector<std::vector<std::vector<int>>> iterative_split_graph_independent(
+		const bool						minimum_guided_,
+		const Eigen::MatrixXf&			origin_score_,
+		std::vector<std::vector<int>>	grouped_nodes_
+	);
+
+	// Analyze the groups and add eges
+	std::vector<std::vector<int>> validate_add_edges(
+		Eigen::MatrixXf&							origin_score_on_fly,
+		std::vector<std::vector<std::vector<int>>>& split_results_,
+		std::vector<std::vector<float>>&			warped_diff,
+		std::vector<std::vector<int>>&				split_indices
+	);
+
+	// Iteratively construct and split the graphs
+	void iterative_group_split(
+		const bool				minimum_guided_,
+		const Eigen::MatrixXf&	origin_score_
+	);
+
 	// Construct graph using the provided scores and filtered by homography difference scores
 	std::vector<Graph_disamb> constructGraph_with_homography_validate(
-		const bool minimum_guided,
-		const Eigen::MatrixXf& scores
+		const bool				minimum_guided,
+		const Eigen::MatrixXf&	scores
+	);
+
+	// Construct graphs for grouped nodes with same settings
+	std::vector<Graph_disamb> constructGraph_with_homography_validate_grouped_nodes(
+		const bool						minimum_guided_,
+		const Eigen::MatrixXf&			origin_score_,
+		std::vector<std::vector<int>>	grouped_nodes_
+	);
+
+	// Construct graphs using the scores and filtered by the size of stitched images
+	std::vector<Graph_disamb> constructGraph_with_stitcher(
+		const bool				minimum_guided_,
+		const Eigen::MatrixXf&	scores_
+	);
+
+	// Compute camera projection matrix and triangulate
+	void triangulateTwoCameras(
+		const int  left_index_,
+		const int  right_index_,
+		const bool locally_computed_ = false
+	);
+
+	// Stitch images
+	static cv::Mat stitch_images(
+		const cv::Mat left_,
+		const cv::Mat right_
 	);
 
 private:
