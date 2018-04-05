@@ -10,6 +10,7 @@
 #include <opencv2/features2d.hpp>
 #include <opencv2/xfeatures2d.hpp>
 
+#include "utility.h"
 #include "Matching.h"
 #include "Parameters.h"
 
@@ -128,7 +129,7 @@ void Matching::read_matchings()
 	}
 }
 
-void Matching::compute_Matchings(
+void Matching::compute_Matchings_1v1(
 	Image_info& image_left_,
 	Image_info& image_right_,
 	int left_index_,
@@ -810,13 +811,37 @@ int Matching::get_matching_number(
 	int left_index = std::find(img_names.begin(), img_names.end(), image_left_.getImageName()) - img_names.begin();
 	int right_index = std::find(img_names.begin(), img_names.end(), image_right_.getImageName()) - img_names.begin();
 
-	if (left_index >= image_num || right_index >= image_num) {
+	if (left_index >= image_num || right_index >= image_num || left_index < 0 || right_index < 0) {
 		std::cout << "Cannot find image names in the vector ..." << std::endl;
 		exit(1);
 	}
-	assert(left_index < right_index);
+	if (left_index == right_index) {
+		std::cout << "get_matching_number: invalid requests for matching number ..." << std::endl;
+		return -1;
+	}
+
+	if (left_index > right_index) {
+		SELF_DEFINE_SWAP(left_index, right_index);
+	}
 
 	return matching_number_mat(left_index, right_index);
+}
+
+int Matching::get_matching_number(
+	int index_left_,
+	int index_right_
+)
+{
+	if (index_left_ >= image_num || index_left_ < 0 ||
+		index_right_ >= image_num || index_right_ < 0 || index_left_ == index_right_) {
+		std::cout << "get_matching_numer: invalid requests for matching number ..." << std::endl;
+		return -1;
+	}
+	if (index_left_ > index_right_) {
+		SELF_DEFINE_SWAP(index_left_, index_right_);
+	}
+	
+	return matching_number_mat(index_left_, index_right_);
 }
 
 cv::Mat Matching::get_outlier_mask(
@@ -928,6 +953,236 @@ void Matching::write_matches(std::vector<Graph_disamb>& graphs_)
 		// Close the output stream
 		match_out.close();
 	}
+}
+
+void Matching::write_matches_1v1(int l_, int r_)
+{
+	if (l_ == r_ || l_ >= image_num || r_ >= image_num) {
+		std::cout << "Invalid writing request, check index ..." << std::endl;
+		return;
+	}
+
+	const int pair_match_number = matching_number_mat(l_, r_);
+	if (pair_match_number <= 0) {
+		std::cout << "Matchings do not exist between the required pair ..." << std::endl;
+		return;
+	}
+
+	// Make sure l has lower index
+	if (l_ > r_) {
+		SELF_DEFINE_SWAP(l_, r_);
+	}
+
+	// Derive the .txt name to save out the matches
+	std::string path;
+	std::string name;
+	Image_info::splitFilename(image_list_path, path, name);
+	std::string save_name = path + "/" + std::to_string(l_) + "_" + std::to_string(r_) + "_matches.txt";
+	std::ofstream match_out(save_name.c_str(), std::ios::out);
+
+	if (!match_out.is_open()) {
+		std::cout << "File open failed ..." << std::endl;
+		return;
+	}
+
+	match_out << img_names[l_] << std::endl;
+	match_out << img_names[r_] << std::endl;
+	match_out << pair_match_number << std::endl;
+
+	const Eigen::Matrix<int, 2, Eigen::Dynamic>& pair_match_mat = matching_mat[l_][r_];
+
+	for (int i = 0; i < pair_match_number; i++) {
+		match_out << pair_match_mat(0, i) << " ";
+	}
+	match_out << std::endl;
+	for (int i = 0; i < pair_match_number; i++) {
+		match_out << pair_match_mat(1, i) << " ";
+	}
+
+	// Close the output stream
+	match_out.close();
+}
+
+void Matching::write_matches_1vN(int l_, const std::vector<int>& subset)
+{
+	if (l_ < 0 || l_ >= image_num) {
+		std::cout << "write_matches_1vN: Invalid request for matching computation, check the index ..." << std::endl;
+		return;
+	}
+
+	// Resolve the output path
+	std::string path;
+	std::string name;
+	Image_info::splitFilename(image_list_path, path, name);
+	std::string save_name = path + "/" + std::to_string(l_) + "_N_matches.txt";
+	std::ofstream match_out(save_name.c_str(), std::ios::out);
+	const int req_num = subset.size();
+
+	if (!match_out.is_open()) {
+		std::cout << "File open failed ..." << std::endl;
+		return;
+	}
+
+	int output_cntr = 0;
+	// Compute matchings between left_index_ and all the other images (N - 1)
+	if (req_num == 0) {
+		for (int i = 0; i < image_num; i++) {
+			if (i == l_) {
+				continue;
+			}
+
+			const int mach_num = matching_number_mat(std::min(l_, i), std::max(l_, i));
+			if (mach_num > 0) {
+				output_cntr++;
+				match_out << img_names[std::min(l_, i)] << std::endl;
+				match_out << img_names[std::max(l_, i)] << std::endl;
+				match_out << mach_num << std::endl;
+
+				const Eigen::Matrix<int, 2, Eigen::Dynamic>& pair_match_mat = matching_mat[std::min(l_, i)][std::max(l_, i)];
+				for (int j = 0; j < mach_num; j++) {
+					match_out << pair_match_mat(0, j) << " ";
+				}
+				match_out << std::endl;
+				for (int j = 0; j < mach_num; j++) {
+					match_out << pair_match_mat(1, j) << " ";
+				}
+				match_out << std::endl << std::endl;
+			}
+		}
+	}
+	else {
+		for (int i = 0; i < req_num; i++) {
+			const int mach_num = matching_number_mat(std::min(l_, subset[i]), std::max(l_, subset[i]));
+			if (mach_num > 0) {
+				output_cntr++;
+				match_out << img_names[std::min(l_, subset[i])] << std::endl;
+				match_out << img_names[std::max(l_, subset[i])] << std::endl;
+				match_out << mach_num << std::endl;
+
+				const Eigen::Matrix<int, 2, Eigen::Dynamic>& pair_match_mat = matching_mat[std::min(l_, subset[i])][std::max(l_, subset[i])];
+				for (int j = 0; j < mach_num; j++) {
+					match_out << pair_match_mat(0, j) << " ";
+				}
+				match_out << std::endl;
+				for (int j = 0; j < mach_num; j++) {
+					match_out << pair_match_mat(1, j) << " ";
+				}
+				match_out << std::endl << std::endl;
+			}
+		}
+	}
+
+	// Close the output stream
+	match_out.close();
+
+	if (output_cntr <= 0) {
+		std::cout << "write_matches_1vN: no matchings found between request image and the rest ..." << std::endl;
+		return;
+	}
+}
+
+void Matching::write_matches_all()
+{
+	// Resolve the output path
+	std::string path;
+	std::string name;
+	Image_info::splitFilename(image_list_path, path, name);
+	std::string save_name = path + "/matchings.txt";
+	std::ofstream match_out(save_name.c_str(), std::ios::out);
+
+	if (!match_out.is_open()) {
+		std::cout << "File open failed ..." << std::endl;
+		return;
+	}
+
+	int output_cntr = 0;
+	// Compute matchings between left_index_ and all the other images (N - 1)
+	for (int i = 0; i < image_num - 1; i++) {
+		for (int j = i + 1; j < image_num; j++) {
+			const int mach_num = matching_number_mat(i, j);
+			if (mach_num > 0) {
+				output_cntr++;
+				match_out << img_names[i] << std::endl;
+				match_out << img_names[j] << std::endl;
+				match_out << mach_num << std::endl;
+
+				const Eigen::Matrix<int, 2, Eigen::Dynamic>& pair_match_mat = matching_mat[i][j];
+				for (int k = 0; k < mach_num; k++) {
+					match_out << pair_match_mat(0, k) << " ";
+				}
+				match_out << std::endl;
+				for (int k = 0; k < mach_num; k++) {
+					match_out << pair_match_mat(1, k) << " ";
+				}
+				match_out << std::endl << std::endl;
+			}
+		}
+	}
+
+	// Close the output stream
+	match_out.close();
+
+	if (output_cntr <= 0) {
+		std::cout << "write_matches_1vN: no matchings found between request image and the rest ..." << std::endl;
+		return;
+	}
+}
+
+std::string Matching::write_matches_designated(const std::string file_name_, const std::vector<cv::Point2i>& linkages)
+{
+	// Validation process
+	const int link_nums = linkages.size();
+	if (link_nums <= 0) {
+		std::cout << "write_matches_designated: the linkages set is empty ..." << std::endl;
+		return std::string("");
+	}
+
+	// Resolve the output path
+	std::string path;
+	std::string name;
+	Image_info::splitFilename(image_list_path, path, name);
+	std::string save_name;
+	(file_name_ == std::string("")) ? save_name = path + "/tmp_matches.txt" : save_name = path + "/" + file_name_;
+	std::ofstream match_out(save_name.c_str(), std::ios::out);
+
+	if (!match_out.is_open()) {
+		std::cout << "File open failed ..." << std::endl;
+		return std::string("");
+	}
+	
+	int output_cntr = 0;
+	for (int i = 0; i < link_nums; i++) {
+		const int l = linkages[i].x;
+		const int r = linkages[i].y;
+		const int mach_num = matching_number_mat(l, r);
+
+		if (mach_num > 0) {
+			output_cntr++;
+			match_out << img_names[l] << std::endl;
+			match_out << img_names[r] << std::endl;
+			match_out << mach_num << std::endl;
+
+			const Eigen::Matrix<int, 2, Eigen::Dynamic>& pair_match_mat = matching_mat[l][r];
+			for (int j = 0; j < mach_num; j++) {
+				match_out << pair_match_mat(0, j) << " ";
+			}
+			match_out << std::endl;
+			for (int j = 0; j < mach_num; j++) {
+				match_out << pair_match_mat(1, j) << " ";
+			}
+			match_out << std::endl << std::endl;
+		}
+	}
+	
+	// Close the output stream
+	match_out.close();
+
+	if (output_cntr <= 0) {
+		std::cout << "write_matches_1vN: no matchings found between request image and the rest ..." << std::endl;
+		return std::string("");
+	}
+
+	return save_name;
 }
 
 void Matching::write_layout(std::vector<Graph_disamb>& graphs_)

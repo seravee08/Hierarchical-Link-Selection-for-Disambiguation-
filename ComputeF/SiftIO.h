@@ -21,10 +21,13 @@ public:
 	~Image_info() {}
 
 	// Read in .aux file
-	void read_Auxililiary();
+	void readAuxililiary_BINARY();
 
 	// Read in .sift file
-	void read_Sift();
+	void readASift_BINARY();
+
+	// Write .sift file in binary form
+	void writeSift_BINARY(bool VSFM_compatible_ = true);
 
 	// Compute plain Sift with OpenCV functions
 	void compute_Sift();
@@ -89,6 +92,7 @@ public:
 	static std::string extract_AUX_name(const std::string img_name_);
 	static void splitFilename(const std::string target_, std::string& path_, std::string& name_);
 	static cv::Mat blendImages(const cv::Mat& A, const cv::Mat& B);
+	static std::string type2str(int type_);
 
 	// Gist functions
 	static std::vector<float> compute_gist(cv::Mat target_);

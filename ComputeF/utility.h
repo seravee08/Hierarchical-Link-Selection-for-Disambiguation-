@@ -19,4 +19,6 @@ std::string create_list(
 	const std::string direc
 );
 
+#define SELF_DEFINE_SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
+
 #endif // !UTILITY_H

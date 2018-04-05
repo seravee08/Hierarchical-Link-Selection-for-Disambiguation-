@@ -22,7 +22,7 @@ public:
 	void read_matchings();
 
 	// Compute matchings
-	void compute_Matchings(
+	void compute_Matchings_1v1(
 		Image_info& image_left_,
 		Image_info& image_right_,
 		int left_index_,
@@ -31,6 +31,18 @@ public:
 
 	// Write matches out into .txt file
 	void write_matches(std::vector<Graph_disamb>& graphs_);
+
+	// Write matches between a pair of images to .txt file
+	void write_matches_1v1(int l_, int r_);
+
+	// Write matches between one image and a subset of images
+	void write_matches_1vN(int l_, const std::vector<int>& subset = std::vector<int>());
+
+	// Write matches for all pairs
+	void write_matches_all();
+
+	// Write matches between the designated pairs
+	std::string write_matches_designated(const std::string file_name_, const std::vector<cv::Point2i>& linkages);
 
 	// Write graph layout into .txt file
 	void write_layout(std::vector<Graph_disamb>& graphs_);
@@ -113,6 +125,12 @@ public:
 	int get_matching_number(
 		Image_info& image_left_,
 		Image_info& image_right_
+	);
+
+	// Get the number of matchings between the two images by index number
+	int get_matching_number(
+		int index_left_,
+		int index_right_
 	);
 
 	// Set the warped image difference matrix

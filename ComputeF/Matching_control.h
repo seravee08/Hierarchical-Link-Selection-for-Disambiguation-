@@ -22,11 +22,26 @@ public:
 	// Compute Sift feature using OpenCV functions locally
 	void compute_Sift(int index = -1);
 
+	// Write out the Sift features in binary form, default to write for all images
+	void writeSift_BINARY(int index_ = -1, bool VSFM_compatible_ = true);
+
 	// Compute matchings
-	void compute_Matchings(int left_index_ = -1, int right_index_ = -1);
+	void compute_Matchings_1v1(int left_index_ = -1, int right_index_ = -1);
+
+	// Compute matchings between one image and a list of images
+	void compute_Matchings_1vN(int left_index_, const std::vector<int>& subset = std::vector<int>());
 
 	// Write out matchings
 	void writeOut_Matchings(std::vector<Graph_disamb>& graphs_);
+
+	// Write out matches for a single image pair
+	void write_matches_1v1(int l_ = -1, int r_ = -1);
+
+	// Write out matches between one image and a subset of images
+	void write_matches_1vN(int l_, const std::vector<int>& subset = std::vector<int>());
+
+	// Write matches between the designated pairs
+	std::string write_matches_designated(const std::string file_name_, const std::vector<cv::Point2i>& linkages);
 
 	// Write out graph layout
 	void writeOut_Layout(std::vector<Graph_disamb>& graphs_);
@@ -194,7 +209,16 @@ public:
 		const cv::Mat right_
 	);
 
+	// =========== BMVC: VSFM SfM Functions =============
+	void set_vsfm_path(const std::string path_);
+
+	void triangulate_VSFM(const std::vector<int>& setA, const std::vector<int>& setB);
+
+	std::vector<cv::Point2i> linkage_selection(const std::vector<int>& setA, const std::vector<int>& setB);
+
 private:
+	std::string		vsfm_exec;
+	std::string		image_list_path;
 	Image_control	img_ctrl;
 	Matching		match;
 };

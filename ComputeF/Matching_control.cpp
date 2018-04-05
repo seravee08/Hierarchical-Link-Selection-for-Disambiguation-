@@ -14,11 +14,17 @@
 
 #include "opencv2/stitching.hpp"
 
+// ===== Boost Library =====
+#include <boost/filesystem.hpp>
+#include <boost/range/iterator_range.hpp>
+
 typedef Graph<float, float, float> GraphType;
 
 Matching_control::Matching_control(const std::string image_list_path_) :
-	img_ctrl	(image_list_path_),
-	match		(image_list_path_)
+	vsfm_exec		(""),
+	image_list_path	(image_list_path_),
+	img_ctrl		(image_list_path_),
+	match			(image_list_path_)
 {
 
 }
@@ -26,7 +32,7 @@ Matching_control::Matching_control(const std::string image_list_path_) :
 void Matching_control::readIn_Keypoints()
 {
 	img_ctrl.read_Auxiliary();
-	img_ctrl.read_Sift();
+	img_ctrl.readASift_BINARY();
 
 	std::cout << "Keypoints readin completes ..." << std::endl;
 }
@@ -43,7 +49,12 @@ void Matching_control::compute_Sift(int index)
 	img_ctrl.compute_Sift(index);
 }
 
-void Matching_control::compute_Matchings(int left_index_, int right_index_)
+void Matching_control::writeSift_BINARY(int index_, bool VSFM_compatible_)
+{
+	img_ctrl.writeSift_BINARY(index_, VSFM_compatible_);
+}
+
+void Matching_control::compute_Matchings_1v1(int left_index_, int right_index_)
 {
 	if (left_index_ < 0 || right_index_ < 0) {
 		// Get the number of images
@@ -54,20 +65,91 @@ void Matching_control::compute_Matchings(int left_index_, int right_index_)
 
 			for (int j = i + 1; j < image_num; j++) {
 				Image_info& img_r = img_ctrl.getImageInfo(j);
-				match.compute_Matchings(img_l, img_r, i, j);
+				match.compute_Matchings_1v1(img_l, img_r, i, j);
 			}
 		}
 	}
 	else {
+		if (left_index_ >= img_ctrl.getImageNum() ||
+			right_index_ >= img_ctrl.getImageNum() ||
+			left_index_ == right_index_) {
+			std::cout << "compute_Matchings_1v1: invalid request for matching computation ..." << std::endl;
+		}
+		if (left_index_ > right_index_) {
+			SELF_DEFINE_SWAP(left_index_, right_index_);
+		}
 		Image_info& img_l = img_ctrl.getImageInfo(left_index_);
 		Image_info& img_r = img_ctrl.getImageInfo(right_index_);
-		match.compute_Matchings(img_l, img_r, left_index_, right_index_);
+		match.compute_Matchings_1v1(img_l, img_r, left_index_, right_index_);
 	}
 }
+
+void Matching_control::compute_Matchings_1vN(int left_index_, const std::vector<int>& subset)
+{
+	if (left_index_ < 0 || left_index_ >= img_ctrl.getImageNum()) {
+		std::cout << "Invalid request for matching computation, check the index ..." << std::endl;
+		return;
+	}
+
+	const int img_num = img_ctrl.getImageNum();
+	const int req_num = subset.size();
+
+	// Compute matchings between left_index_ and all the other images (N - 1)
+	if (req_num == 0) {
+		for (int i = 0; i < img_num; i++) {
+			if (left_index_ == i) {
+				continue;
+			}
+
+			const int mach_num = match.get_matching_number(left_index_, i);
+			if (mach_num <= 0) { 
+				compute_Matchings_1v1(left_index_, i);
+			}
+		}
+	}
+	else {
+		for (int i = 0; i < req_num; i++) {
+			const int mach_num = match.get_matching_number(left_index_, subset[i]);
+			if (mach_num <= 0) {
+				compute_Matchings_1v1(left_index_, subset[i]);
+			}
+		}
+	}
+}
+
 
 void Matching_control::writeOut_Matchings(std::vector<Graph_disamb>& graphs_)
 {
 	match.write_matches(graphs_);
+}
+
+void Matching_control::write_matches_1v1(int l_, int r_)
+{
+	if (l_ < 0 || r_ < 0) {
+		match.write_matches_all();
+	}
+	else {
+		if (l_ >= img_ctrl.getImageNum() ||
+			r_ >= img_ctrl.getImageNum() ||
+			l_ == r_) {
+			std::cout << "write_matches_1v1: invalid requests ..." << std::endl;
+		}
+
+		if (l_ > r_) {
+			SELF_DEFINE_SWAP(l_, r_);
+		}
+		match.write_matches_1v1(l_, r_);
+	}
+}
+
+void Matching_control::write_matches_1vN(int l_, const std::vector<int>& subset)
+{
+	match.write_matches_1vN(l_, subset);
+}
+
+std::string Matching_control::write_matches_designated(const std::string file_name_, const std::vector<cv::Point2i>& linkages)
+{
+	return match.write_matches_designated(file_name_, linkages);
 }
 
 void Matching_control::writeOut_Layout(std::vector<Graph_disamb>& graphs_)
@@ -431,10 +513,10 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 						Image_info& img_r = img_ctrl.getImageInfo(dst_index);
 
 						// Read in the auxiliary and Sift information if have not already done so
-						img_l.read_Auxililiary();
-						img_l.read_Sift();
-						img_r.read_Auxililiary();
-						img_r.read_Sift();
+						img_l.readAuxililiary_BINARY();
+						img_l.readASift_BINARY();
+						img_r.readAuxililiary_BINARY();
+						img_r.readASift_BINARY();
 
 						denseArea_mask = match.get_denseArea_mask(img_l, img_r);
 						match.compute_homography(img_l, img_r, homography, warped_left);
@@ -1294,10 +1376,10 @@ std::vector<std::vector<int>> Matching_control::validate_add_edges(
 					Image_info& img_r = img_ctrl.getImageInfo(lower_index);
 
 					// Read in the auxiliary and Sift information if have not already done so
-					img_l.read_Auxililiary();
-					img_l.read_Sift();
-					img_r.read_Auxililiary();
-					img_r.read_Sift();
+					img_l.readAuxililiary_BINARY();
+					img_l.readASift_BINARY();
+					img_r.readAuxililiary_BINARY();
+					img_r.readASift_BINARY();
 
 					denseArea_mask = match.get_denseArea_mask(img_l, img_r);
 					match.compute_homography(img_l, img_r, homography, warped_left);
@@ -1564,4 +1646,87 @@ cv::Mat Matching_control::stitch_images(
 
 	// Return the result
 	return panorama;
+}
+
+// =============== BMVC: VSFM SfM Functions ===============
+void Matching_control::set_vsfm_path(const std::string path_)
+{
+	vsfm_exec = path_ + "/visualSFM";
+}
+
+void Matching_control::triangulate_VSFM(const std::vector<int>& setA, const std::vector<int>& setB)
+{
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	// the models should be constructed for each sub-group
+	// and then merged, current version supports one group
+	// temporarily
+
+	const int sizeA = setA.size();
+	const int sizeB = setB.size();
+
+	if (sizeA <= 0 || sizeB <= 0) {
+		std::cout << "triangulate_VSFM: incorrect triangulate sequence ..." << std::endl;
+	}
+
+	std::string tmp_matches_name("tmp_matches.txt");
+	std::vector<cv::Point2i> linkages = linkage_selection(setA, setB);
+	std::string tmp_matches_path = write_matches_designated(tmp_matches_name, linkages);
+
+	// Decide if an nvm already exists, use different command call in different cases
+	std::string path;
+	std::string name;
+	Image_info::splitFilename(image_list_path, path, name);
+	std::string nvm_path = path + "/o.nvm";
+	if (!boost::filesystem::exists(nvm_path.c_str())) {
+		std::string cmd = vsfm_exec + " sfm+import " + path + " " + nvm_path + " " + tmp_matches_path;
+		system(cmd.c_str());
+	}
+	else {
+		std::string cmd = vsfm_exec + " sfm+import+resume " + nvm_path + " " + path + "/o_tmp.nvm " + tmp_matches_path;
+		system(cmd.c_str());
+
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		// Pass the linkage validation here, then make the temporary
+		// structure official
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+		// Delete all original nvm file
+		boost::filesystem::path delete_nvm(nvm_path.c_str());
+		boost::filesystem::remove(delete_nvm);
+
+		// Rename the tmp nvm file as nvm file
+		boost::filesystem::path rename_nvm(std::string(path + "/o_tmp.nvm").c_str());
+		boost::filesystem::rename(rename_nvm, delete_nvm);
+	}
+	
+	
+	boost::filesystem::path delete_matches(tmp_matches_path.c_str());
+	boost::filesystem::remove(delete_matches);
+}
+
+std::vector<cv::Point2i> Matching_control::linkage_selection(const std::vector<int>& setA, const std::vector<int>& setB)
+{
+	const int sizeA = setA.size();
+	const int sizeB = setB.size();
+
+	if (sizeA <= 0 || sizeB <= 0) {
+		std::cout << "linkage_selection: incorrect triangulate sequence ..." << std::endl;
+	}
+
+	std::vector<cv::Point2i> linkages;
+
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	// ===== Linkages selection scheme =====
+	// !!!!! Dummy implementation !!!!!
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	for (int i = 0; i < sizeA; i++) {
+		for (int j = 0; j < sizeB; j++) {
+			const int mach_num = match.get_matching_number(setA[i], setB[j]);
+			if (mach_num > 0) {
+				linkages.push_back(cv::Point2i(std::min(setA[i], setB[j]), std::max(setA[i], setB[j])));
+			}
+		}
+	}
+
+	return linkages;
 }

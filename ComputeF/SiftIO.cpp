@@ -27,6 +27,10 @@ Image_info::Image_info(const std::string img_name_):
 	sift_exist  (false)
 {
 	image = cv::imread(img_name_.c_str(), CV_LOAD_IMAGE_COLOR);
+	if (!image.data) {
+		std::cout << "Image open failed, check if the image exists in the folder ..." << std::endl;
+		return;
+	}
 	assert(image.channels() == 3);
 
 	// Get the height and width of the image
@@ -112,7 +116,7 @@ float Image_info::compute_gist_dist(
 	return std::sqrt(dist);
 }
 
-void Image_info::read_Auxililiary()
+void Image_info::readAuxililiary_BINARY()
 {
 	// Detect if auxiliary information has already been read
 	if (aux_exist) {
@@ -184,7 +188,7 @@ void Image_info::read_Auxililiary()
 	delete[] keypoints_num;
 }
 
-void Image_info::read_Sift()
+void Image_info::readASift_BINARY()
 {
 	// Detect if the Sift information has already been read
 	if (sift_exist) {
@@ -244,6 +248,64 @@ void Image_info::read_Sift()
 	// Clean up buffer
 	delete[] coordinates;
 	delete[] descriptor;
+}
+
+// Write out the LOCALLY computed SIFT features in binary format
+void Image_info::writeSift_BINARY(bool VSFM_compatible_)
+{
+	if (!sift_exist || keypoints.size() <= 0) {
+		std::cout << "The SIFT does not exit or not locally computed ..." << std::endl;
+		return;
+	}
+
+	std::ofstream out(sift_name, std::ios::out | std::ios::binary);
+
+	// Headers
+	int headers[5];
+	headers[0] = ('S' + ('I' << 8) + ('F' << 16) + ('T' << 24));
+	headers[1] = ('V' + ('4' << 8) + ('.' << 16) + ('0' << 24));
+	headers[2] = feat_num;
+	headers[3] = 5;
+	headers[4] = 128;
+	out.write((char*)headers, 5 * sizeof(int));
+
+	// Declare arrays to store keypoints and descriptors
+	float* location;
+	location = new float[feat_num * 5];
+
+	for (int i = 0; i < feat_num; i++) {
+		const cv::KeyPoint& kp = keypoints[i];
+		location[i * 5 + 0] = kp.pt.x;
+		location[i * 5 + 1] = kp.pt.y;
+		location[i * 5 + 2] = 0;
+		location[i * 5 + 3] = kp.size;
+		location[i * 5 + 4] = kp.angle;
+	}
+
+	// Write out the arrays
+	out.write((char*)location, feat_num * 5 * sizeof(float));
+
+	// Write the marker for eof
+	int eof_marker = (0xff + ('E' << 8) + ('O' << 16) + ('F' << 24));
+
+	if (VSFM_compatible_) {
+		unsigned char* desc_VSFM = new unsigned char[feat_num * 128];
+		desc_VSFM = (unsigned char*)descriptors.data;
+		out.write((char*)desc_VSFM, feat_num * 128 * sizeof(unsigned char));
+		out.write((char*)&eof_marker, sizeof(int));
+		out << img_name;
+		out.close();
+		delete[] location;
+	}
+	else {
+		float* desc = new float[feat_num * 128];
+		desc = (float*)descriptors.data;
+		out.write((char*)desc, feat_num * 128 * sizeof(float));
+		out.write((char*)&eof_marker, sizeof(int));
+		out << img_name;
+		out.close();
+		delete[] location;
+	}
 }
 
 void Image_info::compute_Sift() {
@@ -413,6 +475,34 @@ cv::Mat Image_info::blendImages(const cv::Mat& A, const cv::Mat& B)
 	cv::addWeighted(A, 0.5, B, 0.5, 0.0, blended_img);
 
 	return blended_img;
+}
+
+std::string Image_info::type2str(int type_)
+{
+	// This function decide the data type of a cv mat
+	// Example: string r = type2str(M.type())
+
+	std::string res;
+
+	uchar depth = type_ & CV_MAT_DEPTH_MASK;
+	uchar chans = 1 + (type_ >> CV_CN_SHIFT);
+
+	switch (depth)
+	{
+		case CV_8U:  res = "8U"; break;
+		case CV_8S:  res = "8S"; break;
+		case CV_16U: res = "16U"; break;
+		case CV_16S: res = "16S"; break;
+		case CV_32S: res = "32S"; break;
+		case CV_32F: res = "32F"; break;
+		case CV_64F: res = "64F"; break;
+		default: res = "User"; break;
+		break;
+	}
+
+	res += "C";
+	res += (chans + '0');
+	return res;
 }
 
 void Image_info::freeSpace()

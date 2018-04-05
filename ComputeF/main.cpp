@@ -139,30 +139,32 @@ int main()
 
 	//reconstruct(input);
 	//[[5, 0], [7, 0], [5, 2], [6, 1], [4, 4], [7, 1]]
-		   
-	
 
-	string direc = string("C:/Users/fango/Desktop/DATA/alexander_nevsky_cathedral/O");
+
+
+	string direc = string("C:/Users/fango/OneDrive/Documents/data/Semper-Statue");
+	string vsfm_exe = string("C:/Apps/VisualSFM_windows_cuda_64bit");
+
 	string list_path = create_list(direc);
 	Matching_control mach_ctrl(list_path);
+	mach_ctrl.set_vsfm_path(vsfm_exe);
 
-	int maxWidth, maxHeight;
-	int minWidth, minHeight;
-	mach_ctrl.return_max_width_height(maxWidth, maxHeight);
-	mach_ctrl.return_min_width_height(minWidth, minHeight);
+	//{
+	//mach_ctrl.compute_Sift();
+	//mach_ctrl.writeSift_BINARY();
+	//mach_ctrl.compute_Matchings_1v1();
+	//mach_ctrl.write_matches_1v1();
+	//}
 
-	cout << "Max width: " << maxWidth << endl;
-	cout << "Max height: " << maxHeight << endl;
-	cout << "Min width: " << minWidth << endl;
-	cout << "Min height: " << minHeight << endl;
-
-	//string direc = string("C:/Users/fango/OneDrive/Documents/GitHub/ComputeF/data/Semper-Statue");
-	//string list_path = create_list(direc);
-	//Matching_control mach_ctrl(list_path);
-	//mach_ctrl.compute_Sift(0);
-	//mach_ctrl.compute_Sift(1);
-	//mach_ctrl.compute_Matchings(0, 1);
-	////mach_ctrl.displayMatchings(0, 1, false, true);
+	//mach_ctrl.readIn_Matchings();
+	//std::vector<int> setA;
+	//std::vector<int> setB;
+	//setA.push_back(0);
+	//setA.push_back(1);
+	//setB.push_back(2);
+	//mach_ctrl.triangulate_VSFM(setA, setB);
+	
+	//mach_ctrl.displayMatchings(0, 1, false, true);
 	//mach_ctrl.triangulateTwoCameras(0, 1, true);
 
 	system("pause");

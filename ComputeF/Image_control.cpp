@@ -61,14 +61,26 @@ Image_control::~Image_control()
 void Image_control::read_Auxiliary()
 {
 	for (int i = 0; i < image_num; i++) {
-		image_list[i].read_Auxililiary();
+		image_list[i].readAuxililiary_BINARY();
 	}
 }
 
-void Image_control::read_Sift()
+void Image_control::readASift_BINARY()
 {
 	for (int i = 0; i < image_num; i++) {
-		image_list[i].read_Sift();
+		image_list[i].readASift_BINARY();
+	}
+}
+
+void Image_control::writeSift_BINARY(int index_, bool VSFM_compatible_)
+{
+	if (index_ < 0) {
+		for (int i = 0; i < image_num; i++) {
+			image_list[i].writeSift_BINARY(VSFM_compatible_);
+		}
+	}
+	else {
+		image_list[index_].writeSift_BINARY(VSFM_compatible_);
 	}
 }
 
@@ -87,15 +99,15 @@ void Image_control::compute_Sift(int index)
 void Image_control::read_single_Auxiliary(int index_)
 {
 	if (!image_list[index_].getAuxStatus()) {
-		image_list[index_].read_Auxililiary();
+		image_list[index_].readAuxililiary_BINARY();
 	}
 }
 
 void Image_control::read_single_Sift(int index_)
 {
 	if (!image_list[index_].getSiftStatus()) {
-		image_list[index_].read_Auxililiary();
-		image_list[index_].read_Sift();
+		image_list[index_].readAuxililiary_BINARY();
+		image_list[index_].readASift_BINARY();
 	}
 }
 

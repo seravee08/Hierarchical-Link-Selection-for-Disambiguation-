@@ -12,13 +12,16 @@ public:
 
 	~Image_control();
 
-	// Read in auxiliary information for all images, have to be called once before calling read_Sift()
+	// Read in auxiliary information for all images, have to be called once before calling readASift_BINARY()
 	void read_Auxiliary();
 
 	// Read in Sift information for all images
-	void read_Sift();
+	void readASift_BINARY();
 
-	// Compute Sift feature using OpenCV functions locally
+	// Write out the Sift features in binary form, default to write for all images
+	void writeSift_BINARY(int index_ = -1, bool VSFM_compatible_ = true);
+
+	// Compute Sift feature using OpenCV functions locally, default to compute for all images
 	void compute_Sift(int index = -1);
 
 	// Read in auxiliary information for a specific image
