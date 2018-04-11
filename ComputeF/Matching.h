@@ -162,26 +162,26 @@ public:
 	);
 
 private:
-	int image_num;
-	int pair_num;
+	int																	image_num;
+	int																	pair_num;
 
 	// Path to the input txt files
-	std::string					image_list_path;
-	std::string					matching_path;
+	std::string															image_list_path;
+	std::string															matching_path;
 
 	// Vector containing all the image names
-	std::vector<std::string>	img_names;
+	std::vector<std::string>											img_names;
 
 	// Note: all information are stored only in the upper triangle!!
-	Eigen::MatrixXi				matching_number_mat;
-	Eigen::MatrixXf				warped_diff_mat;
+	Eigen::MatrixXi														matching_number_mat;
+	Eigen::MatrixXf														warped_diff_mat;
 
 	// Stores all the matchings matrix and outlier mask in a 2-dimensional vector in upper tirangle
-	std::vector<std::vector<Eigen::Matrix<int, 2, Eigen::Dynamic>>> matching_mat;
-	std::vector<std::vector<cv::Mat>>								outlier_mask_mat;
+	std::vector<std::vector<Eigen::Matrix<int, 2, Eigen::Dynamic>>>		matching_mat;
+	std::vector<std::vector<cv::Mat>>									outlier_mask_mat;
 
 	// Signals, also stored in upper tirangle!!
-	Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> homography_existence_indicator;
+	Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>					homography_existence_indicator;
 };
 
 #endif // !MATCHING_H

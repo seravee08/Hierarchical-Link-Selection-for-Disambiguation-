@@ -142,11 +142,11 @@ int main()
 
 
 
-	string direc = string("C:/Users/fango/OneDrive/Documents/data/Semper-Statue");
+	string direc = string("C:/Users/fango/OneDrive/Documents/data/street_exp");
 	string vsfm_exe = string("C:/Apps/VisualSFM_windows_cuda_64bit");
 
 	string list_path = create_list(direc);
-	Matching_control mach_ctrl(list_path);
+	Matching_control mach_ctrl(direc, list_path);
 	mach_ctrl.set_vsfm_path(vsfm_exe);
 
 	//{
@@ -156,13 +156,8 @@ int main()
 	//mach_ctrl.write_matches_1v1();
 	//}
 
-	//mach_ctrl.readIn_Matchings();
-	//std::vector<int> setA;
-	//std::vector<int> setB;
-	//setA.push_back(0);
-	//setA.push_back(1);
-	//setB.push_back(2);
-	//mach_ctrl.triangulate_VSFM(setA, setB);
+	mach_ctrl.readIn_Matchings();
+	mach_ctrl.dummy_control();
 	
 	//mach_ctrl.displayMatchings(0, 1, false, true);
 	//mach_ctrl.triangulateTwoCameras(0, 1, true);

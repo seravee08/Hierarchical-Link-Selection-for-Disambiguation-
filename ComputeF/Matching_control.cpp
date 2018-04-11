@@ -12,6 +12,7 @@
 #include "Matching_control.h"
 #include "graph.h"
 
+// ===== OpenCV Library =====
 #include "opencv2/stitching.hpp"
 
 // ===== Boost Library =====
@@ -20,13 +21,31 @@
 
 typedef Graph<float, float, float> GraphType;
 
-Matching_control::Matching_control(const std::string image_list_path_) :
+Matching_control::Matching_control(
+	const std::string direc_,
+	const std::string image_list_path_) :
 	vsfm_exec		(""),
-	image_list_path	(image_list_path_),
+	direc			(direc_),
 	img_ctrl		(image_list_path_),
 	match			(image_list_path_)
 {
+	image_num = img_ctrl.getImageNum();
+	cams.resize(image_num);
+	cams_group_id = std::vector<int>(image_num, 0);
 
+	if (!(ep = engOpen(""))) {
+		std::cout << "Matlab engine start failed ..." << std::endl;
+		exit(-1);
+	}
+}
+
+Matching_control::~Matching_control()
+{
+	cams.clear();
+	pt3d.clear();
+	cams_group_id.clear();
+
+	engClose(ep);
 }
 
 void Matching_control::readIn_Keypoints()
@@ -1668,65 +1687,298 @@ void Matching_control::triangulate_VSFM(const std::vector<int>& setA, const std:
 		std::cout << "triangulate_VSFM: incorrect triangulate sequence ..." << std::endl;
 	}
 
-	std::string tmp_matches_name("tmp_matches.txt");
-	std::vector<cv::Point2i> linkages = linkage_selection(setA, setB);
-	std::string tmp_matches_path = write_matches_designated(tmp_matches_name, linkages);
-
-	// Decide if an nvm already exists, use different command call in different cases
-	std::string path;
-	std::string name;
-	Image_info::splitFilename(image_list_path, path, name);
-	std::string nvm_path = path + "/o.nvm";
-	if (!boost::filesystem::exists(nvm_path.c_str())) {
-		std::string cmd = vsfm_exec + " sfm+import " + path + " " + nvm_path + " " + tmp_matches_path;
-		system(cmd.c_str());
+	if (!linkage_selection(setA, setB)) {
+		std::cout << "Splitting models" << std::endl;
 	}
-	else {
-		std::string cmd = vsfm_exec + " sfm+import+resume " + nvm_path + " " + path + "/o_tmp.nvm " + tmp_matches_path;
-		system(cmd.c_str());
-
-		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-		// Pass the linkage validation here, then make the temporary
-		// structure official
-		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-		// Delete all original nvm file
-		boost::filesystem::path delete_nvm(nvm_path.c_str());
-		boost::filesystem::remove(delete_nvm);
-
-		// Rename the tmp nvm file as nvm file
-		boost::filesystem::path rename_nvm(std::string(path + "/o_tmp.nvm").c_str());
-		boost::filesystem::rename(rename_nvm, delete_nvm);
-	}
-	
-	
-	boost::filesystem::path delete_matches(tmp_matches_path.c_str());
-	boost::filesystem::remove(delete_matches);
 }
 
-std::vector<cv::Point2i> Matching_control::linkage_selection(const std::vector<int>& setA, const std::vector<int>& setB)
+bool Matching_control::linkage_selection(const std::vector<int>& setA, const std::vector<int>& setB)
 {
 	const int sizeA = setA.size();
 	const int sizeB = setB.size();
 
 	if (sizeA <= 0 || sizeB <= 0) {
 		std::cout << "linkage_selection: incorrect triangulate sequence ..." << std::endl;
+		return false;
 	}
 
-	std::vector<cv::Point2i> linkages;
+	// ===== Choose the best link =======
+	std::vector<CameraT>		cams_;
+	std::vector<int>			cam_index_;
+	std::vector<Point3D>		pt3d_;
+	std::vector<cv::Point2i>	linkages;
 
-	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	// ===== Linkages selection scheme =====
-	// !!!!! Dummy implementation !!!!!
-	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	for (int i = 0; i < sizeA; i++) {
-		for (int j = 0; j < sizeB; j++) {
-			const int mach_num = match.get_matching_number(setA[i], setB[j]);
-			if (mach_num > 0) {
-				linkages.push_back(cv::Point2i(std::min(setA[i], setB[j]), std::max(setA[i], setB[j])));
+	// Decide if an nvm already exists, use different command call in different cases
+	std::string nvm_path     = direc + "/o.nvm";
+	std::string nvm_path_tmp = direc + "/o_tmp.nvm";
+	std::string tmp_matches_name("tmp_matches.txt");
+
+	if (!boost::filesystem::exists(nvm_path.c_str())) {
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		// Temporary implementation: choose the first pair
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		linkages.push_back(cv::Point2i(0, 1));
+		call_VSFM(linkages, tmp_matches_name, nvm_path);
+
+		viewer.readIn_NVM(direc + "/o.nvm", cams_, cam_index_, pt3d_);
+		viewer.show_pointCloud(pt3d_, cams_, cam_index_, setA, setB);
+		commit_cams(cams_, cam_index_, pt3d_, 1);
+	}
+	else {
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		// Temporary implementation: Add only one camera
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		float				max_volume  = -1;
+		cv::Point2i			best_linkages(-1, -1);
+		std::vector<int>	compared_cam_rec(image_num, 0);
+
+		// Setup the base volume
+		float base_volume = -1;
+		std::vector<int> base_cam_ind;
+		std::vector<CameraT> base_cam;
+		base_cam_ind.reserve(sizeA);
+		base_cam.reserve(sizeA);
+		if (sizeA >= 4) {
+			for (int i = 0; i < image_num; i++) {
+				if (cams_group_id[i] == 1) {
+					base_cam.push_back(cams[i]);
+					base_cam_ind.push_back(i);
+				}
+			}
+			base_volume = convhull_volume(base_cam);
+			assert(base_cam.size() == sizeA);
+		}
+
+		// Start searching for the best link
+		for (int i = 0; i < sizeA; i++) {
+			const int setA_cam_ind = setA[i];
+			if (compared_cam_rec[setA_cam_ind] == 0) {
+
+				int cam_nearest = find_closestCam(setA_cam_ind, 1);
+				compared_cam_rec[setA_cam_ind]  = 1;
+
+				linkages.push_back(cv::Point2i(setA_cam_ind, setB[0]));
+				linkages.push_back(cv::Point2i(cam_nearest, setB[0]));
+				call_VSFM(linkages, tmp_matches_name, nvm_path, nvm_path_tmp, true);
+
+				viewer.readIn_NVM(nvm_path_tmp, cams_, cam_index_, pt3d_);
+				// viewer.show_pointCloud(pt3d_, cams_);
+				FileOperator::deleteFile(nvm_path_tmp);
+
+				// =====================================================
+				// Linkage selection scheme
+				// =====================================================
+
+				float adjusted_volume;
+				float new_base_volume;
+				float current_volume = convhull_volume(cams_);
+				if (base_volume > 0.0f) {
+					std::vector<CameraT> new_base_cam(sizeA);
+					for (int j = 0; j < sizeA; j++) {
+						const int base_ind = std::find(cam_index_.begin(), cam_index_.end(), base_cam_ind[j]) - cam_index_.begin();
+						new_base_cam[j] = cams_[base_ind];
+					}
+					new_base_volume = convhull_volume(new_base_cam);
+					adjusted_volume = current_volume / (new_base_volume / base_volume);
+				}
+				else {
+					adjusted_volume = current_volume;
+				}
+				
+				if (adjusted_volume > max_volume || sizeA == 2) {
+					max_volume = adjusted_volume;
+					best_linkages = cv::Point2i(setA_cam_ind, cam_nearest);
+				}
+
+				std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
+				std::cout << "Pair <" << setA_cam_ind << "," << setB[0] << "> added ..." << std::endl;
+				std::cout << "Pair <" << cam_nearest << "," << setB[0] << "> added ..." << std::endl;
+				std::cout << "Adjusted volume is: " << adjusted_volume << std::endl;
+				system("pause");
+			}
+		}
+
+		if (max_volume == -1 && sizeA >= 3) {
+			std::cout << "Failed to find expand current models ..." << std::endl;
+			exit(1);
+		}
+
+		std::cout << "##############################" << std::endl;
+		std::cout << "Pair <" << best_linkages.x << "," << setB[0] << "> added ..." << std::endl;
+		std::cout << "Pair <" << best_linkages.y << "," << setB[0] << "> added ..." << std::endl;
+		std::cout << "Adjusted volume is: " << max_volume << std::endl;
+		system("pause");
+
+		linkages.push_back(cv::Point2i(best_linkages.x, setB[0]));
+		linkages.push_back(cv::Point2i(best_linkages.y, setB[0]));
+		call_VSFM(linkages, tmp_matches_name, nvm_path, nvm_path_tmp, true);
+
+		viewer.readIn_NVM(nvm_path_tmp, cams_, cam_index_, pt3d_);
+		viewer.show_pointCloud(pt3d_, cams_, cam_index_, setA, setB);
+		commit_cams(cams_, cam_index_, pt3d_, 1);
+
+		FileOperator::deleteFile(nvm_path);
+		FileOperator::renameFile(nvm_path_tmp, nvm_path);
+	}
+}
+
+void Matching_control::dummy_control()
+{
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	// Should be done by the grouping function
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+	std::vector<int> setA;
+	std::vector<int> setB;
+	setA.push_back(0);
+	for (int i = 1; i < image_num; i++) {
+		setB.push_back(i);
+		triangulate_VSFM(setA, setB);
+		setA.push_back(i);
+		setB.clear();
+	}
+}
+
+int Matching_control::find_closestCam(int index_, int group_id_)
+{
+	int   min_ind = -1;
+	float min_dis = std::numeric_limits<int>::max();
+
+	for (int i = 0; i < image_num; i++) {
+		if (cams_group_id[i] == group_id_ && i != index_) {
+			float dis = compute_cam_dis(cams[i], cams[index_]);
+			if (dis < min_dis) {
+				min_dis = dis;
+				min_ind = i;
 			}
 		}
 	}
 
-	return linkages;
+	if (min_ind == -1) {
+		std::cout << "find_closestCam: cannot find closest camera position ..." << std::endl;
+		exit(1);
+	}
+
+	return min_ind;
+}
+
+float Matching_control::compute_cam_dis(CameraT& l_, CameraT& r_) {
+	float T1[3];
+	float T2[3];
+
+	l_.GetCameraCenter(T1);
+	r_.GetCameraCenter(T2);
+
+	return 
+		(T1[0] - T2[0]) * (T1[0] - T2[0]) +
+		(T1[1] - T2[1]) * (T1[1] - T2[1]) +
+		(T1[2] - T2[2]) * (T1[2] - T2[2]);
+}
+
+void Matching_control::commit_cams(
+	const std::vector<CameraT>& cams_,
+	const std::vector<int>& cams_ind_,
+	std::vector<Point3D> pt3d_,
+	const int group_id_
+)
+{
+	const int added_cam_num = cams_ind_.size();
+
+	for (int i = 0; i < added_cam_num; i++) {
+		cams[cams_ind_[i]] = cams_[i];
+		cams_group_id[cams_ind_[i]] = group_id_;
+	}
+
+	if (pt3d.size() < group_id_) {
+		pt3d.push_back(pt3d_);
+	}
+	else {
+		pt3d[group_id_ - 1] = pt3d_;
+	}
+}
+
+bool Matching_control::call_VSFM(
+	std::vector<cv::Point2i>& linkages_,
+	const std::string& match_name_,
+	const std::string& nvm_path_,
+	const std::string& tmp_nvm_path_,
+	bool resume
+)
+{
+	std::string cmd;
+	std::string tmp_matches_path = write_matches_designated(match_name_, linkages_);
+	if (!resume) {
+		cmd = vsfm_exec + " sfm+import " + direc + " " + nvm_path_ + " " + tmp_matches_path;
+	}
+	else {
+		cmd = vsfm_exec + " sfm+import+resume " + nvm_path_ + " " + tmp_nvm_path_ + " " + tmp_matches_path;
+		
+	}
+#ifdef NO_VSFM_VERBO
+	system_no_output(cmd.c_str());
+#else
+	system(cmd.c_str());
+#endif // NO_VSFM_VERBO
+
+	linkages_.clear();
+	FileOperator::deleteFile(tmp_matches_path);
+
+	return true;
+}
+
+float Matching_control::convhull_volume(std::vector<CameraT>& cams_)
+{
+	const int cam_num = cams_.size();
+	if (cam_num < 4) {
+		return -1.0f;
+	}
+
+	double *x = new double[cam_num];
+	double *y = new double[cam_num];
+	double *z = new double[cam_num];
+	double *r;
+	float res;
+
+	float T[3];
+	for (int i = 0; i < cam_num; i++) {
+		cams_[i].GetCameraCenter(T);
+		x[i] = (double)T[0];
+		y[i] = (double)T[1];
+		z[i] = (double)T[2];
+	}
+
+	// Declare MatLAB engine and arrays
+	mxArray *X = NULL;
+	mxArray *Y = NULL;
+	mxArray *Z = NULL;
+	mxArray *R = NULL;
+
+	X = mxCreateDoubleMatrix(cam_num, 1, mxREAL);
+	Y = mxCreateDoubleMatrix(cam_num, 1, mxREAL);
+	Z = mxCreateDoubleMatrix(cam_num, 1, mxREAL);
+
+	std::memcpy((void*)mxGetPr(X), (void*)x, sizeof(double) * cam_num);
+	std::memcpy((void*)mxGetPr(Y), (void*)y, sizeof(double) * cam_num);
+	std::memcpy((void*)mxGetPr(Z), (void*)z, sizeof(double) * cam_num);
+
+	engEvalString(ep, "clear all;");
+	engPutVariable(ep, "X", X);
+	engPutVariable(ep, "Y", Y);
+	engPutVariable(ep, "Z", Z);
+
+	engEvalString(ep, "[TriIdx, V] = convhull(X, Y, Z);");
+	R = engGetVariable(ep, "V");
+	r = mxGetPr(R);
+	res = (float)r[0];
+
+	mxDestroyArray(X);
+	mxDestroyArray(Y);
+	mxDestroyArray(Z);
+	mxDestroyArray(R);
+
+	delete x;
+	delete y;
+	delete z;
+
+	return res;
 }

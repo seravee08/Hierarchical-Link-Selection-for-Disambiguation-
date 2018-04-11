@@ -89,5 +89,32 @@
     <ClInclude Include="graph.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="pba\ConfigBA.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pba\CuTexImage.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pba\DataInterface.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pba\interface.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pba\pba.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pba\ProgramCU.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pba\SparseBundleCPU.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pba\SparseBundleCU.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pba\util.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

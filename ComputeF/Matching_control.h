@@ -6,12 +6,19 @@
 #include "Graph_Disamb.h"
 #include "Image_control.h"
 #include "Matching.h"
+#include "utility.h"
+
+// ===== MatLAB Library =====
+#include "engine.h"
 
 class Matching_control {
 public:
-	Matching_control(const std::string image_list_path_);
+	Matching_control(
+		const std::string direc_,
+		const std::string image_list_path_
+	);
 
-	~Matching_control() {}
+	~Matching_control();
 
 	// Read in sift and affine information
 	void readIn_Keypoints();
@@ -210,17 +217,65 @@ public:
 	);
 
 	// =========== BMVC: VSFM SfM Functions =============
-	void set_vsfm_path(const std::string path_);
+	void set_vsfm_path(
+		const std::string path_
+	);
 
-	void triangulate_VSFM(const std::vector<int>& setA, const std::vector<int>& setB);
+	void triangulate_VSFM(
+		const std::vector<int>& setA,
+		const std::vector<int>& setB
+	);
 
-	std::vector<cv::Point2i> linkage_selection(const std::vector<int>& setA, const std::vector<int>& setB);
+	bool linkage_selection(
+		const std::vector<int>& setA,
+		const std::vector<int>& setB
+	);
+
+	int find_closestCam(
+		int index_,
+		int group_id_
+	);
+
+	float Matching_control::compute_cam_dis(
+		CameraT& l_,
+		CameraT& r_
+	);
+
+	void commit_cams(
+		const std::vector<CameraT>& cams_,
+		const std::vector<int>& cams_ind_,
+		std::vector<Point3D> pt3d_,
+		const int group_id_
+	);
+
+	bool call_VSFM(
+		std::vector<cv::Point2i>& linkages_,
+		const std::string& match_name_,
+		const std::string& nvm_path_,
+		const std::string& tmp_nvm_path_ = std::string(""),
+		bool resume = false
+	);
+
+	float convhull_volume(
+		std::vector<CameraT>& cams_
+	);
+
+	void dummy_control();
 
 private:
-	std::string		vsfm_exec;
-	std::string		image_list_path;
-	Image_control	img_ctrl;
-	Matching		match;
+	int									image_num;
+	std::string							vsfm_exec;
+	std::string							direc;
+
+	std::vector<CameraT>				cams;
+	std::vector<std::vector<Point3D>>	pt3d;
+	std::vector<int>					cams_group_id;
+
+	Image_control						img_ctrl;
+	Matching							match;
+	Viewer								viewer;
+
+	Engine								*ep;
 };
 
 

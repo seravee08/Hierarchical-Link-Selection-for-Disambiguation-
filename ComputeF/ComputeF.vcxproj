@@ -72,8 +72,8 @@
     <IncludePath>C:\opencv\build\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>C:\opencv3.3CE\build\install\include;C:\Eigen\eigen;C:\Eigen\eigen\libigl-master\include;C:\boost\boost_1_66_0;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\opencv3.3CE\build\install\x64\vc14\lib;C:\Users\fango\OneDrive\Documents\GitHub\ComputeF\Libs;C:\boost\boost_1_66_0\stage\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\opencv3.3CE\build\install\include;C:\Eigen\eigen;C:\Eigen\eigen\libigl-master\include;C:\boost\boost_1_66_0;C:\Apps\Matlab2016R\extern\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\opencv3.3CE\build\install\x64\vc14\lib;C:\Users\fango\OneDrive\Documents\GitHub\ComputeF\Libs;C:\boost\boost_1_66_0\stage\lib;C:\Apps\Matlab2016R\extern\lib\win64\microsoft;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -110,11 +110,12 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NO_VSFM_VERBO;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>opencv_highgui330.lib;opencv_core330.lib;opencv_calib3d330.lib;opencv_imgproc330.lib;opencv_stitching330.lib;opencv_features2d330.lib;opencv_xfeatures2d330.lib;opencv_imgcodecs330.lib;fftw3f-3.lib;libboost_filesystem-vc140-mt-x64-1_66.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opencv_highgui330.lib;opencv_core330.lib;opencv_calib3d330.lib;opencv_imgproc330.lib;opencv_stitching330.lib;opencv_features2d330.lib;opencv_xfeatures2d330.lib;opencv_imgcodecs330.lib;opencv_viz330.lib;fftw3f-3.lib;libboost_filesystem-vc140-mt-x64-1_66.lib;libeng.lib;libmat.lib;libmex.lib;libemlrt.lib;libcovrt.lib;libmx.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -141,6 +142,15 @@
     <ClInclude Include="Matching.h" />
     <ClInclude Include="Matching_control.h" />
     <ClInclude Include="Parameters.h" />
+    <ClInclude Include="pba\ConfigBA.h" />
+    <ClInclude Include="pba\CuTexImage.h" />
+    <ClInclude Include="pba\DataInterface.h" />
+    <ClInclude Include="pba\interface.h" />
+    <ClInclude Include="pba\pba.h" />
+    <ClInclude Include="pba\ProgramCU.h" />
+    <ClInclude Include="pba\SparseBundleCPU.h" />
+    <ClInclude Include="pba\SparseBundleCU.h" />
+    <ClInclude Include="pba\util.h" />
     <ClInclude Include="SiftIO.h" />
     <ClInclude Include="standalone_image.h" />
     <ClInclude Include="utility.h" />

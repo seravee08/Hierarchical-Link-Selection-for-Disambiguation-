@@ -73,7 +73,10 @@ void Matching::read_matchings()
 {
 	// ===== Open input file stream =====
 	std::ifstream match_in(matching_path.c_str(), std::ios::in);
-	assert(match_in.is_open());
+	if (!match_in.is_open()) {
+		std::cout << "Matchings file does not exist ..." << std::endl;
+		exit(1);
+	}
 
 	// ===== Read in matchings =====
 	int matching_number;
@@ -1152,8 +1155,8 @@ std::string Matching::write_matches_designated(const std::string file_name_, con
 	
 	int output_cntr = 0;
 	for (int i = 0; i < link_nums; i++) {
-		const int l = linkages[i].x;
-		const int r = linkages[i].y;
+		const int l = std::min(linkages[i].x, linkages[i].y);
+		const int r = std::max(linkages[i].x, linkages[i].y);
 		const int mach_num = matching_number_mat(l, r);
 
 		if (mach_num > 0) {
