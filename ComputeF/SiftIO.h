@@ -90,6 +90,7 @@ public:
 	// Static functions
 	static std::string extract_SIFT_name(const std::string img_name_);
 	static std::string extract_AUX_name(const std::string img_name_);
+	static std::string extract_MAT_name(const std::string img_name_);
 	static void splitFilename(const std::string target_, std::string& path_, std::string& name_);
 	static cv::Mat blendImages(const cv::Mat& A, const cv::Mat& B);
 	static std::string type2str(int type_);

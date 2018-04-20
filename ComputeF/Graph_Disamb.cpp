@@ -15,22 +15,17 @@ Graph_disamb::Graph_disamb(const int node_num_) :
 }
 
 void Graph_disamb::addEdge(
-	int source_index_,
-	int desti_index_
+	const int source_index_,
+	const int desti_index_
 )
 {
 	// Validate the source and destination indices
 	assert(source_index_ != desti_index_);
-	if (source_index_ > desti_index_) {
-		int swap_tmp = source_index_;
-		source_index_ = desti_index_;
-		desti_index_ = swap_tmp;
-	}
 
 	// Update the layout and node status
-	layOut(source_index_, desti_index_) = 1;
-	node_status[source_index_]			= 1;
-	node_status[desti_index_]			= 1;
+	layOut(std::min(source_index_, desti_index_), std::max(source_index_, desti_index_)) = 1;
+	node_status[source_index_]															 = 1;
+	node_status[desti_index_]															 = 1;
 }
 
 int Graph_disamb::get_node_status(int index_)

@@ -286,6 +286,42 @@ void Viewer::readIn_NVM(std::string nvm_path, std::vector<CameraT>& cams, std::v
 	}
 }
 
+// Resolve the old and new cameras sets
+bool Viewer::resolve_cameras(
+	const std::vector<CameraT>& cams_,
+	const std::vector<int>&		cam_index_,
+	const std::vector<int>&		setA_,
+	const std::vector<int>&		setB_,
+	std::vector<CameraT>&		old_cams_,
+	std::vector<CameraT>&		new_cams_
+)
+{
+	const int sizeA = setA_.size();
+	const int sizeB = setB_.size();
+
+	if (sizeA + sizeB != cams_.size()) {
+		std::cout << "resolve_cameras: new nvm file does not contain all cams from both sets ..." << std::endl;
+		return false;
+	}
+
+	old_cams_.clear();
+	new_cams_.clear();
+	old_cams_.resize(sizeA);
+	new_cams_.resize(sizeB);
+
+	for (int i = 0; i < sizeA; i++) {
+		int ind = std::find(cam_index_.begin(), cam_index_.end(), setA_[i]) - cam_index_.begin();
+		old_cams_[i] = cams_[ind];
+	}
+
+	for (int i = 0; i < sizeB; i++) {
+		int ind = std::find(cam_index_.begin(), cam_index_.end(), setB_[i]) - cam_index_.begin();
+		new_cams_[i] = cams_[ind];
+	}
+
+	return true;
+}
+
 // Definations for FileOperator Class
 FileOperator::FileOperator() {}
 

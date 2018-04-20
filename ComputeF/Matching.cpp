@@ -1146,7 +1146,7 @@ std::string Matching::write_matches_designated(const std::string file_name_, con
 	Image_info::splitFilename(image_list_path, path, name);
 	std::string save_name;
 	(file_name_ == std::string("")) ? save_name = path + "/tmp_matches.txt" : save_name = path + "/" + file_name_;
-	std::ofstream match_out(save_name.c_str(), std::ios::out);
+	std::ofstream match_out(save_name.c_str(), std::ios::out | std::ios::app);
 
 	if (!match_out.is_open()) {
 		std::cout << "File open failed ..." << std::endl;
@@ -1274,4 +1274,9 @@ Eigen::MatrixXf Matching::getWarped_diff()
 Eigen::MatrixXi Matching::getMatching_number()
 {
 	return matching_number_mat;
+}
+
+std::string Matching::get_MAT_name(int index_)
+{
+	return Image_info::extract_MAT_name(img_names[index_]);
 }

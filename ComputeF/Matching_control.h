@@ -223,17 +223,32 @@ public:
 
 	void triangulate_VSFM(
 		const std::vector<int>& setA,
-		const std::vector<int>& setB
+		const std::vector<int>& setB,
+		const bool interrupted = false
 	);
 
 	bool linkage_selection(
 		const std::vector<int>& setA,
-		const std::vector<int>& setB
+		const std::vector<int>& setB,
+		const bool interrupted = false
 	);
 
 	int find_closestCam(
 		int index_,
 		int group_id_
+	);
+
+	void find_closestCam(
+		CameraT&					tar_cam_,
+		std::vector<CameraT>&		cams_,
+		int&						closest_ind_,
+		float&						closest_dis_
+	);
+
+	void Matching_control::find_closestCam(
+		CameraT&					tar_cam_,
+		std::vector<CameraT>&		cams_,
+		std::vector<int>&			index_
 	);
 
 	float Matching_control::compute_cam_dis(
@@ -249,15 +264,33 @@ public:
 	);
 
 	bool call_VSFM(
-		std::vector<cv::Point2i>& linkages_,
-		const std::string& match_name_,
-		const std::string& nvm_path_,
-		const std::string& tmp_nvm_path_ = std::string(""),
-		bool resume = false
+		std::vector<cv::Point2i>&	linkages_,
+		const std::string&			match_name_,
+		const std::string&			nvm_path_,
+		bool						save_matches_file	= false,
+		bool						resume				= false,
+		const std::string&			original_file		= std::string(""),
+		const std::string&			tmp_nvm_path_		= std::string("")
 	);
 
 	float convhull_volume(
 		std::vector<CameraT>& cams_
+	);
+
+	float convhull_volume(
+		std::vector<Point3D>& pt3d_
+	);
+
+	void readIn_NVM(
+		std::string	nvm_path
+	);
+
+	void delete_MAT(
+		int index_
+	);
+
+	void delete_MAT(
+		const std::vector<int>& index_
 	);
 
 	void dummy_control();

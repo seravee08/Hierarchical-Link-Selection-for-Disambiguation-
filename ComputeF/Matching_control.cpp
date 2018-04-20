@@ -206,8 +206,8 @@ int Matching_control::getMatch_number(
 	const int right_index_
 )
 {
-	Image_info& left_image  = img_ctrl.getImageInfo(left_index_);
-	Image_info& right_image = img_ctrl.getImageInfo(right_index_);
+	Image_info& left_image  = img_ctrl.getImageInfo(std::min(left_index_, right_index_));
+	Image_info& right_image = img_ctrl.getImageInfo(std::max(left_index_, right_index_));
 
 	return match.get_matching_number(left_image, right_image);
 }
@@ -1673,7 +1673,11 @@ void Matching_control::set_vsfm_path(const std::string path_)
 	vsfm_exec = path_ + "/visualSFM";
 }
 
-void Matching_control::triangulate_VSFM(const std::vector<int>& setA, const std::vector<int>& setB)
+void Matching_control::triangulate_VSFM(
+	const std::vector<int>& setA,
+	const std::vector<int>& setB,
+	const bool interrupted
+)
 {
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// the models should be constructed for each sub-group
@@ -1687,12 +1691,15 @@ void Matching_control::triangulate_VSFM(const std::vector<int>& setA, const std:
 		std::cout << "triangulate_VSFM: incorrect triangulate sequence ..." << std::endl;
 	}
 
-	if (!linkage_selection(setA, setB)) {
+	if (!linkage_selection(setA, setB, interrupted)) {
 		std::cout << "Splitting models" << std::endl;
 	}
 }
 
-bool Matching_control::linkage_selection(const std::vector<int>& setA, const std::vector<int>& setB)
+bool Matching_control::linkage_selection(
+	const std::vector<int>& setA,
+	const std::vector<int>& setB,
+	const bool interrupted)
 {
 	const int sizeA = setA.size();
 	const int sizeB = setB.size();
@@ -1712,13 +1719,20 @@ bool Matching_control::linkage_selection(const std::vector<int>& setA, const std
 	std::string nvm_path     = direc + "/o.nvm";
 	std::string nvm_path_tmp = direc + "/o_tmp.nvm";
 	std::string tmp_matches_name("tmp_matches.txt");
+	std::string sel_matches_name("selected_matches.txt");
+	std::string first_time_token = direc + "/" + sel_matches_name;
 
-	if (!boost::filesystem::exists(nvm_path.c_str())) {
+	if (interrupted) {
+		viewer.readIn_NVM(nvm_path, cams_, cam_index_, pt3d_);
+		commit_cams(cams_, cam_index_, pt3d_, 1);
+	}
+
+	if (!boost::filesystem::exists(first_time_token.c_str())) {
 		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		// Temporary implementation: choose the first pair
 		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		linkages.push_back(cv::Point2i(0, 1));
-		call_VSFM(linkages, tmp_matches_name, nvm_path);
+		call_VSFM(linkages, sel_matches_name, nvm_path, true, false);
 
 		viewer.readIn_NVM(direc + "/o.nvm", cams_, cam_index_, pt3d_);
 		viewer.show_pointCloud(pt3d_, cams_, cam_index_, setA, setB);
@@ -1728,26 +1742,27 @@ bool Matching_control::linkage_selection(const std::vector<int>& setA, const std
 		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		// Temporary implementation: Add only one camera
 		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-		float				max_volume  = -1;
+		const int			K = 3;
+		// float			max_volume  = -1;
 		cv::Point2i			best_linkages(-1, -1);
 		std::vector<int>	compared_cam_rec(image_num, 0);
 
 		// Setup the base volume
-		float base_volume = -1;
-		std::vector<int> base_cam_ind;
-		std::vector<CameraT> base_cam;
-		base_cam_ind.reserve(sizeA);
-		base_cam.reserve(sizeA);
-		if (sizeA >= 4) {
-			for (int i = 0; i < image_num; i++) {
-				if (cams_group_id[i] == 1) {
-					base_cam.push_back(cams[i]);
-					base_cam_ind.push_back(i);
-				}
-			}
-			base_volume = convhull_volume(base_cam);
-			assert(base_cam.size() == sizeA);
-		}
+		//float base_volume = -1;
+		//std::vector<int> base_cam_ind;
+		//std::vector<CameraT> base_cam;
+		//base_cam_ind.reserve(sizeA);
+		//base_cam.reserve(sizeA);
+		//if (sizeA >= 4) {
+		//	for (int i = 0; i < image_num; i++) {
+		//		if (cams_group_id[i] == 1) {
+		//			base_cam.push_back(cams[i]);
+		//			base_cam_ind.push_back(i);
+		//		}
+		//	}
+		//	base_volume = convhull_volume(base_cam);
+		//	assert(base_cam.size() == sizeA);
+		//}
 
 		// Start searching for the best link
 		for (int i = 0; i < sizeA; i++) {
@@ -1759,67 +1774,151 @@ bool Matching_control::linkage_selection(const std::vector<int>& setA, const std
 
 				linkages.push_back(cv::Point2i(setA_cam_ind, setB[0]));
 				linkages.push_back(cv::Point2i(cam_nearest, setB[0]));
-				call_VSFM(linkages, tmp_matches_name, nvm_path, nvm_path_tmp, true);
+				call_VSFM(linkages, tmp_matches_name, nvm_path, false, true, std::string(""), nvm_path_tmp);
 
 				viewer.readIn_NVM(nvm_path_tmp, cams_, cam_index_, pt3d_);
-				// viewer.show_pointCloud(pt3d_, cams_);
+				//viewer.show_pointCloud(pt3d_, cams_, cam_index_, setA, setB);
 				FileOperator::deleteFile(nvm_path_tmp);
+				delete_MAT(setB[0]);
 
 				// =====================================================
 				// Linkage selection scheme
 				// =====================================================
+				
 
-				float adjusted_volume;
-				float new_base_volume;
-				float current_volume = convhull_volume(cams_);
-				if (base_volume > 0.0f) {
-					std::vector<CameraT> new_base_cam(sizeA);
-					for (int j = 0; j < sizeA; j++) {
-						const int base_ind = std::find(cam_index_.begin(), cam_index_.end(), base_cam_ind[j]) - cam_index_.begin();
-						new_base_cam[j] = cams_[base_ind];
-					}
-					new_base_volume = convhull_volume(new_base_cam);
-					adjusted_volume = current_volume / (new_base_volume / base_volume);
+				// ==================================================
+				// Trial: nearest cameras should have the most matches
+				// ==================================================
+				std::vector<int> setA_copy = setA;
+				std::vector<int> setB_copy = setB;
+				std::vector<CameraT> old_cams;
+				std::vector<CameraT> new_cams;
+				if (!viewer.resolve_cameras(cams_, cam_index_, setA_copy, setB_copy, old_cams, new_cams)) {
+					continue;
+				}
+				find_closestCam(new_cams[0], old_cams, setA_copy);
+
+				std::vector<int> matches_num_seq(sizeA);
+				for (int j = 0; j < sizeA; j++) {
+					matches_num_seq[j] = getMatch_number(setA[j], setB[0]);
+				}
+				std::sort(matches_num_seq.begin(), matches_num_seq.end(), std::greater<int>());
+				int nearest_matches	= 0;
+				int most_matches	= 0;
+				for (int j = 0; j < std::min(sizeA, K); j++) {
+					nearest_matches += getMatch_number(setA_copy[j], setB_copy[0]);
+					most_matches += matches_num_seq[j];
+				}
+
+				if (nearest_matches > 0.8 * most_matches) {
+					best_linkages = cv::Point2i(setA_copy[0], setA_copy[1]);
+					break;
 				}
 				else {
-					adjusted_volume = current_volume;
-				}
-				
-				if (adjusted_volume > max_volume || sizeA == 2) {
-					max_volume = adjusted_volume;
-					best_linkages = cv::Point2i(setA_cam_ind, cam_nearest);
+					std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
+					std::cout << "Pair <" << setA_cam_ind << "," << setB[0] << "> added ..." << std::endl;
+					std::cout << "Pair <" << cam_nearest << "," << setB[0] << "> added ..." << std::endl;
+					std::cout << "Most matches: " << most_matches << "  " << "Nearest matches: " << nearest_matches << std::endl;
+
+					//for (int j = 0; j < std::min(sizeA, K); j++) {
+					//	std::cout << "nearest cam is : " << setA_copy[j] << std::endl;						
+					//}
+					//for (int j = 0; j < std::min(sizeA, K); j++) {
+					//	std::cout << "most matches are : " << matches_num_seq[j] << std::endl;
+					//}
 				}
 
-				std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
-				std::cout << "Pair <" << setA_cam_ind << "," << setB[0] << "> added ..." << std::endl;
-				std::cout << "Pair <" << cam_nearest << "," << setB[0] << "> added ..." << std::endl;
-				std::cout << "Adjusted volume is: " << adjusted_volume << std::endl;
+
+				// ==================================================
+				// Trial: Calculate the camera positions volume
+				// ==================================================
+				//float adjusted_volume;
+				//float new_base_volume;
+				//float current_volume = convhull_volume(cams_);
+				//if (base_volume > 0.0f) {
+				//	std::vector<CameraT> new_base_cam(sizeA);
+				//	for (int j = 0; j < sizeA; j++) {
+				//		const int base_ind = std::find(cam_index_.begin(), cam_index_.end(), base_cam_ind[j]) - cam_index_.begin();
+				//		new_base_cam[j] = cams_[base_ind];
+				//	}
+				//	new_base_volume = convhull_volume(new_base_cam);
+				//	adjusted_volume = current_volume / (new_base_volume / base_volume);
+				//}
+				//else {
+				//	adjusted_volume = current_volume;
+				//}
+				//
+				//if (adjusted_volume > max_volume || sizeA == 2) {
+				//	max_volume = adjusted_volume;
+				//	best_linkages = cv::Point2i(setA_cam_ind, cam_nearest);
+				//}
+				// ==================================================
+
+				// ==================================================
+				// Trial: calculate the distance, matches score
+				// ==================================================
+				//int cntr_test = 0;
+				//std::vector<CameraT> tt1(sizeA);
+				//for (int j = 0; j < sizeA; j++) {
+				//	const int ind_t = std::find(cam_index_.begin(), cam_index_.end(), setA[j]) - cam_index_.begin();
+				//	tt1[j] = cams_[ind_t];
+				//}
+				//float score_test = 0.0f;
+				//for (int j = 0; j < sizeA - 1; j++) {
+				//	for (int k = j + 1; k < sizeA; k++) {
+				//		score_test += getMatch_number(setA[j], setA[k]) * compute_cam_dis(tt1[j], tt1[k]);
+				//		cntr_test++;
+				//	}
+				//}
+				//score_test /= cntr_test;
+				//cntr_test = 0;
+				//float score_test_total = 0.0f;
+				//for (int j = 0; j < cams_.size() - 1; j++) {
+				//	for (int k = j + 1; k < cams_.size(); k++) {
+				//		score_test_total += getMatch_number(cam_index_[j], cam_index_[k]) * compute_cam_dis(cams_[j], cams_[k]);
+				//		cntr_test++;
+				//	}
+				//}
+				//score_test_total /= cntr_test;
+				// ==================================================
+
+
+				//std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
+				//std::cout << "Pair <" << setA_cam_ind << "," << setB[0] << "> added ..." << std::endl;
+				//std::cout << "Pair <" << cam_nearest << "," << setB[0] << "> added ..." << std::endl;
+				//std::cout << "Adjusted volume is: " << adjusted_volume << std::endl;
+				//std::cout << "!!!! Score are: " << score_test << "<-> " << score_test_total << std::endl;
 				system("pause");
 			}
 		}
 
-		if (max_volume == -1 && sizeA >= 3) {
-			std::cout << "Failed to find expand current models ..." << std::endl;
-			exit(1);
-		}
+		//if (max_volume == -1 && sizeA >= 3) {
+		//	std::cout << "Failed to find expand current models ..." << std::endl;
+		//	exit(1);
+		//}
 
 		std::cout << "##############################" << std::endl;
 		std::cout << "Pair <" << best_linkages.x << "," << setB[0] << "> added ..." << std::endl;
 		std::cout << "Pair <" << best_linkages.y << "," << setB[0] << "> added ..." << std::endl;
-		std::cout << "Adjusted volume is: " << max_volume << std::endl;
 		system("pause");
 
+		//delete_MAT(setA);
 		linkages.push_back(cv::Point2i(best_linkages.x, setB[0]));
 		linkages.push_back(cv::Point2i(best_linkages.y, setB[0]));
-		call_VSFM(linkages, tmp_matches_name, nvm_path, nvm_path_tmp, true);
+		//write_matches_designated("selected_matches.txt", linkages);
+		call_VSFM(linkages, sel_matches_name, nvm_path, true, false);
+		//write_matches_designated(sel_matches_name, linkages);
+		//call_VSFM(linkages, tmp_matches_name, nvm_path, false, true, std::string(""), nvm_path);
 
-		viewer.readIn_NVM(nvm_path_tmp, cams_, cam_index_, pt3d_);
+		viewer.readIn_NVM(nvm_path, cams_, cam_index_, pt3d_);
 		viewer.show_pointCloud(pt3d_, cams_, cam_index_, setA, setB);
 		commit_cams(cams_, cam_index_, pt3d_, 1);
 
-		FileOperator::deleteFile(nvm_path);
-		FileOperator::renameFile(nvm_path_tmp, nvm_path);
+		//FileOperator::deleteFile(nvm_path);
+		//FileOperator::renameFile(nvm_path_tmp, nvm_path);
 	}
+
+	return true;
 }
 
 void Matching_control::dummy_control()
@@ -1828,12 +1927,13 @@ void Matching_control::dummy_control()
 	// Should be done by the grouping function
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-	std::vector<int> setA;
+	int inlier_cam_num = 1;
+	std::vector<int> setA(inlier_cam_num);
 	std::vector<int> setB;
-	setA.push_back(0);
-	for (int i = 1; i < image_num; i++) {
+	std::iota(std::begin(setA), std::end(setA), 0);
+	for (int i = inlier_cam_num; i < image_num; i++) {
 		setB.push_back(i);
-		triangulate_VSFM(setA, setB);
+		triangulate_VSFM(setA, setB, false);
 		setA.push_back(i);
 		setB.clear();
 	}
@@ -1842,7 +1942,7 @@ void Matching_control::dummy_control()
 int Matching_control::find_closestCam(int index_, int group_id_)
 {
 	int   min_ind = -1;
-	float min_dis = std::numeric_limits<int>::max();
+	float min_dis = std::numeric_limits<float>::max();
 
 	for (int i = 0; i < image_num; i++) {
 		if (cams_group_id[i] == group_id_ && i != index_) {
@@ -1860,6 +1960,46 @@ int Matching_control::find_closestCam(int index_, int group_id_)
 	}
 
 	return min_ind;
+}
+
+void Matching_control::find_closestCam(
+	CameraT&				tar_cam_,
+	std::vector<CameraT>&	cams_,
+	int&					closest_ind_,
+	float&					closest_dis_
+)
+{
+	closest_ind_	= -1;
+	closest_dis_	= std::numeric_limits<float>::max();
+	const int num	= cams_.size();
+
+	for (int i = 0; i < num; i++) {
+		float dis = compute_cam_dis(tar_cam_, cams_[i]);
+		if (dis < closest_dis_) {
+			closest_dis_ = dis;
+			closest_ind_ = i;
+		}
+	}
+
+	if (closest_ind_ == -1) {
+		std::cout << "find_closestCam: cannot find closest camera position ..." << std::endl;
+		exit(1);
+	}
+}
+
+void Matching_control::find_closestCam(
+	CameraT&				tar_cam_,
+	std::vector<CameraT>&	cams_,
+	std::vector<int>&		index_
+)
+{
+	const int cam_num = cams_.size();
+	std::vector<float> dis(cam_num);
+
+	for (int i = 0; i < cam_num; i++) {
+		dis[i] = compute_cam_dis(tar_cam_, cams_[i]);
+	}
+	sort_indices<float>(dis, index_, true);
 }
 
 float Matching_control::compute_cam_dis(CameraT& l_, CameraT& r_) {
@@ -1898,22 +2038,35 @@ void Matching_control::commit_cams(
 }
 
 bool Matching_control::call_VSFM(
-	std::vector<cv::Point2i>& linkages_,
-	const std::string& match_name_,
-	const std::string& nvm_path_,
-	const std::string& tmp_nvm_path_,
-	bool resume
+	std::vector<cv::Point2i>&	linkages_,
+	const std::string&			match_name_,
+	const std::string&			nvm_path_,
+	bool						save_matches_file,
+	bool						resume,
+	const std::string&			original_file,
+	const std::string&			tmp_nvm_path_
 )
 {
 	std::string cmd;
-	std::string tmp_matches_path = write_matches_designated(match_name_, linkages_);
+	std::string tmp_matches_path;
+
+	// If save matching file, copy the original file and rename it as a temporary file
+	if (!save_matches_file && !resume) {
+		cmd = "xcopy " + direc + "/" + original_file + " " + direc + "/" + match_name_ + "*";
+		std::replace(cmd.begin(), cmd.end(), '/', '\\');
+		system_no_output(cmd.c_str());
+	}
+
+	tmp_matches_path = write_matches_designated(match_name_, linkages_);
+
+	// If resume, load in the original nvm file and add more triangulated points to it
 	if (!resume) {
 		cmd = vsfm_exec + " sfm+import " + direc + " " + nvm_path_ + " " + tmp_matches_path;
 	}
 	else {
 		cmd = vsfm_exec + " sfm+import+resume " + nvm_path_ + " " + tmp_nvm_path_ + " " + tmp_matches_path;
-		
 	}
+
 #ifdef NO_VSFM_VERBO
 	system_no_output(cmd.c_str());
 #else
@@ -1921,7 +2074,9 @@ bool Matching_control::call_VSFM(
 #endif // NO_VSFM_VERBO
 
 	linkages_.clear();
-	FileOperator::deleteFile(tmp_matches_path);
+	if (!save_matches_file) {
+		FileOperator::deleteFile(tmp_matches_path);
+	}
 
 	return true;
 }
@@ -1981,4 +2136,85 @@ float Matching_control::convhull_volume(std::vector<CameraT>& cams_)
 	delete z;
 
 	return res;
+}
+
+float Matching_control::convhull_volume(std::vector<Point3D>& pt3d_)
+{
+	const int pt_num = pt3d_.size();
+	if (pt_num < 4) {
+		return -1.0f;
+	}
+
+	double *x = new double[pt_num];
+	double *y = new double[pt_num];
+	double *z = new double[pt_num];
+	double *r;
+	float res;
+
+	for (int i = 0; i < pt_num; i++) {
+		x[i] = (double)pt3d_[i].xyz[0];
+		y[i] = (double)pt3d_[i].xyz[1];
+		z[i] = (double)pt3d_[i].xyz[2];
+	}
+
+	// Declare MatLAB engine and arrays
+	mxArray *X = NULL;
+	mxArray *Y = NULL;
+	mxArray *Z = NULL;
+	mxArray *R = NULL;
+
+	X = mxCreateDoubleMatrix(pt_num, 1, mxREAL);
+	Y = mxCreateDoubleMatrix(pt_num, 1, mxREAL);
+	Z = mxCreateDoubleMatrix(pt_num, 1, mxREAL);
+
+	std::memcpy((void*)mxGetPr(X), (void*)x, sizeof(double) * pt_num);
+	std::memcpy((void*)mxGetPr(Y), (void*)y, sizeof(double) * pt_num);
+	std::memcpy((void*)mxGetPr(Z), (void*)z, sizeof(double) * pt_num);
+
+	engEvalString(ep, "clear all;");
+	engPutVariable(ep, "X", X);
+	engPutVariable(ep, "Y", Y);
+	engPutVariable(ep, "Z", Z);
+
+	engEvalString(ep, "[TriIdx, V] = convhull(X, Y, Z);");
+	R = engGetVariable(ep, "V");
+	r = mxGetPr(R);
+	res = (float)r[0];
+
+	mxDestroyArray(X);
+	mxDestroyArray(Y);
+	mxDestroyArray(Z);
+	mxDestroyArray(R);
+
+	delete x;
+	delete y;
+	delete z;
+
+	return res;
+}
+
+void Matching_control::readIn_NVM(std::string nvm_path)
+{
+	std::vector<CameraT>		cams_;
+	std::vector<int>			cam_index_;
+	std::vector<Point3D>		pt3d_;
+
+	viewer.readIn_NVM(nvm_path, cams_, cam_index_, pt3d_);
+	viewer.show_pointCloud(pt3d_, cams_);
+
+	// float current_volume = convhull_volume(cams_);
+	// std::cout << "Adjusted volume is: " << current_volume << std::endl;
+}
+
+void Matching_control::delete_MAT(int index_)
+{
+	FileOperator::deleteFile(match.get_MAT_name(index_));
+}
+
+void Matching_control::delete_MAT(const std::vector<int>& index_)
+{
+	const int num = index_.size();
+	for (int i = 0; i < num; i++) {
+		delete_MAT(index_[i]);
+	}
 }

@@ -158,9 +158,14 @@ int main()
 
 	mach_ctrl.readIn_Matchings();
 	mach_ctrl.dummy_control();
+
+
 	
 	//mach_ctrl.displayMatchings(0, 1, false, true);
 	//mach_ctrl.triangulateTwoCameras(0, 1, true);
+
+
+
 
 	system("pause");
 

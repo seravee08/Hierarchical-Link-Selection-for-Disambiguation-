@@ -43,12 +43,22 @@ public:
 	);
 
 	// Display the point cloud
-	void Viewer::show_pointCloud(
+	void show_pointCloud(
 		const std::vector<Point3D>&		pt3d_,
 		std::vector<CameraT>&			cams_,
 		const std::vector<int>&			cam_index_	= std::vector<int>(0),
 		const std::vector<int>&			setA_		= std::vector<int>(0),
 		const std::vector<int>&			setB_		= std::vector<int>(0)
+	);
+
+	// Resolve the old and new cameras sets
+	bool resolve_cameras(
+		const std::vector<CameraT>& cams_,
+		const std::vector<int>&		cam_index_,
+		const std::vector<int>&		setA_,
+		const std::vector<int>&		setB_,
+		std::vector<CameraT>&		old_cams_,
+		std::vector<CameraT>&		new_cams_
 	);
 
 private:

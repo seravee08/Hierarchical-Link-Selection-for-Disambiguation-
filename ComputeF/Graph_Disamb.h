@@ -18,8 +18,8 @@ public:
 
 	// Add an edge between two nodes
 	void addEdge(
-		int source_index_,
-		int desti_index_
+		const int source_index_,
+		const int desti_index_
 	);
 
 	// Return the status for a node

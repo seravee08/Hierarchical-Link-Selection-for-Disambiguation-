@@ -47,6 +47,9 @@ public:
 	// Write graph layout into .txt file
 	void write_layout(std::vector<Graph_disamb>& graphs_);
 
+	// Retrive the name of the corresponding mat file created by VisualSFMf
+	std::string get_MAT_name(int index_);
+
 	// Return an outlier mask for the specified pair
 	cv::Mat get_outlier_mask(
 		Image_info& image_left_,
