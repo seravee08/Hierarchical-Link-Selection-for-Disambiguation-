@@ -342,3 +342,133 @@ bool FileOperator::renameFile(const std::string o_name_, const std::string n_nam
 
 	return true;
 }
+
+// Definations for Utility Class
+// This class is mainly for new functions to refine
+// the iterative grouping functionality
+bool Utility::computeMatches_betnGroups(
+	const int				group_index_,
+	const Eigen::MatrixXf&	score_mat_,
+	const vvv_int&			split_res_,
+	v_int&					srcNode_vec,
+	v_int&					desNode_vec,
+	v_int&					machNum_vec
+)
+{
+	// Clear previous data
+	srcNode_vec.clear();
+	desNode_vec.clear();
+	machNum_vec.clear();
+
+	// Check if two gropus exist in the split results
+	assert(split_res_[group_index_].size() == 2);
+	
+	// Calculate accumulated match numbers
+	const int fstGroup_size = split_res_[group_index_][0].size();
+	const int secGroup_size = split_res_[group_index_][1].size();
+
+	for (int i = 0; i < fstGroup_size; i++) {
+		for (int j = 0; j < secGroup_size; j++) {
+			const int upper_ind  = split_res_[group_index_][0][i];
+			const int lower_ind  = split_res_[group_index_][1][j];
+			assert(upper_ind != lower_ind);
+			const float mach_num = score_mat_(std::min(upper_ind, lower_ind), std::max(upper_ind, lower_ind));
+
+			if (mach_num > 0) {
+				srcNode_vec.push_back(std::min(upper_ind, lower_ind));
+				desNode_vec.push_back(std::max(upper_ind, lower_ind));
+				machNum_vec.push_back(mach_num);
+			}
+			else {
+				continue;
+			}
+		}
+	}
+
+	// Sort the matching number in decreasing order
+	sort_indices(machNum_vec, srcNode_vec, false);
+	sort_indices(machNum_vec, desNode_vec, false);
+
+	return true;
+}
+
+v_int Utility::mergeGroups(
+	const int				group_index_,
+	const vvv_int&			split_res_
+)
+{
+	v_int fusion_;
+	fusion_.reserve(split_res_[group_index_][0].size() + split_res_[group_index_][1].size());
+	fusion_.insert(fusion_.end(), split_res_[group_index_][0].begin(), split_res_[group_index_][0].end());
+	fusion_.insert(fusion_.end(), split_res_[group_index_][1].begin(), split_res_[group_index_][1].end());
+
+	return fusion_;
+}
+
+vv_int Utility::initGroups(
+	const int				group_num_
+)
+{
+	vv_int groups(group_num_);
+	for (int i = 0; i < group_num_; i++) {
+		groups[i].push_back(i);
+	}
+	return groups;
+}
+
+Graph_disamb Utility::construct_singleGraph(
+	const bool				minimum_guided_,
+	const Eigen::MatrixXf&	score_mat_,
+	v_int&					nodes_inGraph_
+)
+{
+	v_int curr_nodes;
+	v_int srcNode_vec;
+	v_int desNode_vec;
+	v_float score_vec;
+
+	const int num	= nodes_inGraph_.size();
+	const int start = std::find(nodes_inGraph_.begin(), nodes_inGraph_.end(), 0) - nodes_inGraph_.begin();
+	Graph_disamb graph(num);
+
+	// Mark the start node in the records
+	nodes_inGraph_[start] = 1;
+	curr_nodes.push_back(start);
+
+	while (curr_nodes.size() < num) {
+
+		// Clear the vectors
+		srcNode_vec.clear();
+		desNode_vec.clear();
+		score_vec.clear();
+
+		for (int i = 0; i < curr_nodes.size(); i++) {
+			const int src = curr_nodes[i];
+			for (int j = 0; j < num; j++) {
+				const float score = score_mat_(std::min(src, j), std::max(src, j));
+				if (nodes_inGraph_[j] == 0 && score > 0) {
+					score_vec.push_back(score);
+					srcNode_vec.push_back(src);
+					desNode_vec.push_back(j);
+				}
+			}
+		}
+
+		if (score_vec.size() > 0) {
+			sort_indices(score_vec, srcNode_vec, minimum_guided_);
+			sort_indices(score_vec, desNode_vec, minimum_guided_);
+
+			// TODO
+			int bst_link_ = 0;
+			nodes_inGraph_[desNode_vec[bst_link_]] = 1;
+			curr_nodes.push_back(desNode_vec[bst_link_]);
+			graph.addEdge(srcNode_vec[bst_link_], desNode_vec[bst_link_]);
+		}
+		else {
+			std::cout << "The graphs break ..." << std::endl;
+			break;
+		}
+	}
+
+	return graph;
+}

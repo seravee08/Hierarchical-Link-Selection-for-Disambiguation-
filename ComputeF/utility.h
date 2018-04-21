@@ -6,7 +6,11 @@
 #include <vector>
 #include <opencv2/viz.hpp>
 
+#include "Eigen/Core"
+
 #include "pba\DataInterface.h"
+#include "Parameters.h"
+#include "Graph_Disamb.h"
 
 #define SELF_DEFINE_SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
 
@@ -74,6 +78,37 @@ public:
 	static bool deleteFile(const std::string t_);
 
 	static bool renameFile(const std::string o_name_, const std::string n_name_);
+};
+
+class Utility {
+public:
+	Utility() {};
+	
+	~Utility() {};
+
+	static bool computeMatches_betnGroups(
+		const int				group_index_,
+		const Eigen::MatrixXf&	score_mat_,
+		const vvv_int&			split_res_,
+		v_int&					srcNode_vec,
+		v_int&					desNode_vec,
+		v_int&					machNum_vec
+	);
+
+	static v_int mergeGroups(
+		const int				group_index_,
+		const vvv_int&			split_res_
+	);
+	
+	static Graph_disamb construct_singleGraph(
+		const bool				minimum_guided_,
+		const Eigen::MatrixXf&	score_mat_,
+		v_int&					nodes_inGraph_
+	);
+
+	static vv_int initGroups(
+		const int				group_num_
+	);
 };
 
 #endif // !UTILITY_H

@@ -41,6 +41,9 @@ public:
 	// Write out matchings
 	void writeOut_Matchings(std::vector<Graph_disamb>& graphs_);
 
+	// Write out matchings
+	void writeOut_Matchings(Graph_disamb& graph_);
+
 	// Write out matches for a single image pair
 	void write_matches_1v1(int l_ = -1, int r_ = -1);
 
@@ -87,7 +90,10 @@ public:
 	void displayKeypoints(int index_);
 
 	// Display the group status of current round
-	void showGroupStatus(const std::vector<std::vector<std::vector<int>>>& split_results_);
+	void showGroupStatus(const vvv_int& split_results_);
+
+	// Display the group status of current round
+	void showGroupStatus(const vv_int& groups_);
 		
 	// Return the number of matches between the image pair
 	int getMatch_number(
@@ -136,24 +142,24 @@ public:
 	);
 
 	// Split the graph
-	std::vector<std::vector<std::vector<int>>> split_graph(
+	vvv_int split_graph(
 		const bool						minimum_guided_,
 		const Eigen::MatrixXf&			origin_score_,
 		Graph_disamb&					graph_,
 		std::vector<std::vector<int>>	grouped_nodes_,
 		Graph_disamb*&					upper_graph_,
 		Graph_disamb*&					lower_graph_,
-		std::vector<int>&				upper_set,
-		std::vector<int>&				lower_set
+		v_int&							upper_set,
+		v_int&							lower_set
 	);
 
 	// Split the nodes based on the input graph
-	std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
+	vvv_int Matching_control::iterative_split(
 		const bool						minimum_guided_,
 		const Eigen::MatrixXf&			origin_score_,
-		std::vector<std::vector<int>>	grouped_nodes_,
+		const vv_int&					grouped_nodes_,
 		Graph_disamb&					graph_,
-		std::vector<std::vector<int>>&  split_indices
+		vv_int&							split_indices
 	);
 
 	// Split the graph independent from the graph constructed for this round
@@ -171,17 +177,29 @@ public:
 	);
 
 	// Analyze the groups and add eges
-	std::vector<std::vector<int>> validate_add_edges(
+	std::vector<std::vector<int>> validate_add_edges_with_homography(
 		Eigen::MatrixXf&							origin_score_on_fly,
 		std::vector<std::vector<std::vector<int>>>& split_results_,
 		std::vector<std::vector<float>>&			warped_diff,
 		std::vector<std::vector<int>>&				split_indices
 	);
 
+	// Analyze the groups and validate edges with geometric cues: BMVC added
+	vv_int validate_add_edges_width_SFM(
+		const Eigen::MatrixXf&		score_mat_,
+		vvv_int&					split_results_,
+		Graph_disamb&				global_graph_
+	);
+
+	vv_int validate_last_edge_width_SFM(
+		const Eigen::MatrixXf&		score_mat_,
+		vv_int&						groups_,
+		Graph_disamb&				global_graph_
+	);
+
 	// Iteratively construct and split the graphs
 	void iterative_group_split(
-		const bool				minimum_guided_,
-		const Eigen::MatrixXf&	origin_score_
+		const bool				minimum_guided_
 	);
 
 	// Construct graph using the provided scores and filtered by homography difference scores
@@ -191,7 +209,7 @@ public:
 	);
 
 	// Construct graphs for grouped nodes with same settings
-	std::vector<Graph_disamb> constructGraph_with_homography_validate_grouped_nodes(
+	std::vector<Graph_disamb> constructGraph_with_grouped_nodes(
 		const bool						minimum_guided_,
 		const Eigen::MatrixXf&			origin_score_,
 		std::vector<std::vector<int>>	grouped_nodes_
@@ -307,6 +325,7 @@ private:
 	Image_control						img_ctrl;
 	Matching							match;
 	Viewer								viewer;
+	Utility								utility;
 
 	Engine								*ep;
 };

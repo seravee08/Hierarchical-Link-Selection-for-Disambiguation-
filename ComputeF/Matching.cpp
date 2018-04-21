@@ -48,6 +48,7 @@ Matching::Matching(const std::string image_list_path_) :
 
 	// Initialize for the matching data strucutres
 	matching_number_mat				= Eigen::MatrixXi::Zero(image_num, image_num);
+	matching_number_mat_float		= Eigen::MatrixXf::Zero(image_num, image_num);
 	warped_diff_mat					= Eigen::MatrixXf::Ones(image_num, image_num) * -1;
 	homography_existence_indicator	= Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>::Zero(image_num, image_num);
 
@@ -130,6 +131,14 @@ void Matching::read_matchings()
 		// Increase the pair of matchings counter by 1
 		pair_num++;
 	}
+
+	generate_float_matching_number_mat();
+}
+
+void Matching::generate_float_matching_number_mat()
+{
+	// TODO: Naive implementaion
+	matching_number_mat_float = matching_number_mat.cast<float>();
 }
 
 void Matching::compute_Matchings_1v1(
@@ -958,6 +967,52 @@ void Matching::write_matches(std::vector<Graph_disamb>& graphs_)
 	}
 }
 
+void Matching::write_matches(Graph_disamb& graph_)
+{
+	// Compose the path to the correspoinding matchings.txt
+	std::string path;
+	std::string name;
+	Image_info::splitFilename(image_list_path, path, name);
+
+	// Compose output path for current graph
+	std::string path_matches = path + "/matchings_global.txt";
+	std::ofstream match_out(path_matches.c_str(), std::ios::out);
+	assert(match_out.is_open());
+
+	// Retrieve the current graph layout
+	const Eigen::MatrixXi layout = graph_.getLayout();
+	assert(image_num == layout.rows());
+	assert(image_num == layout.cols());
+
+	for (int j = 0; j < image_num - 1; j++) {
+		for (int k = j + 1; k < image_num; k++) {
+			const int matching_number = matching_number_mat(j, k);
+
+			if (matching_number > 0 && layout(j, k) == 1) {
+				match_out << img_names[j] << std::endl;
+				match_out << img_names[k] << std::endl;
+				match_out << matching_number << std::endl;
+
+				// Retrieve the matching matrix
+				const Eigen::Matrix<int, 2, Eigen::Dynamic>& matchings = matching_mat[j][k];
+				// Write out upper indices
+				for (int l = 0; l < matching_number; l++) {
+					match_out << matchings(0, l) << " ";
+				}
+				match_out << std::endl;
+				// Write out lower indices
+				for (int l = 0; l < matching_number; l++) {
+					match_out << matchings(1, l) << " ";
+				}
+				match_out << std::endl << std::endl;
+			}
+		}
+	}
+
+	// Close the output stream
+	match_out.close();
+}
+
 void Matching::write_matches_1v1(int l_, int r_)
 {
 	if (l_ == r_ || l_ >= image_num || r_ >= image_num) {
@@ -1271,9 +1326,14 @@ Eigen::MatrixXf Matching::getWarped_diff()
 	return warped_diff_mat;
 }
 
-Eigen::MatrixXi Matching::getMatching_number()
+Eigen::MatrixXi Matching::getMatching_number_mat()
 {
 	return matching_number_mat;
+}
+
+Eigen::MatrixXf Matching::getMatching_number_mat_float()
+{
+	return matching_number_mat_float;
 }
 
 std::string Matching::get_MAT_name(int index_)

@@ -29,4 +29,16 @@
 
 #define DISPLAY								// Enable the display function of the program
 
+#define v_int					std::vector<int>
+
+#define vv_int					std::vector<std::vector<int>>
+
+#define vvv_int					std::vector<std::vector<std::vector<int>>>
+
+#define v_float					std::vector<float>
+
+#define vv_float				std::vector<std::vector<float>>
+
+#define vvv_float				std::vector<std::vector<std::vector<float>>>
+
 #endif // !PARAMETERS_H

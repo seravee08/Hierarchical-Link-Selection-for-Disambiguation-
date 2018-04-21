@@ -142,6 +142,11 @@ void Matching_control::writeOut_Matchings(std::vector<Graph_disamb>& graphs_)
 	match.write_matches(graphs_);
 }
 
+void Matching_control::writeOut_Matchings(Graph_disamb& graph_)
+{
+	match.write_matches(graph_);
+}
+
 void Matching_control::write_matches_1v1(int l_, int r_)
 {
 	if (l_ < 0 || r_ < 0) {
@@ -193,7 +198,7 @@ Eigen::MatrixXf Matching_control::getWarped_diff_mat()
 
 Eigen::MatrixXi Matching_control::getMatching_number_mat()
 {
-	return match.getMatching_number();
+	return match.getMatching_number_mat();
 }
 
 void Matching_control::displayKeypoints(int index_)
@@ -236,7 +241,7 @@ float Matching_control::getWarped_diff_value(
 	return match.getWarped_diff()(left_index_, right_index_);
 }
 
-void Matching_control::showGroupStatus(const std::vector<std::vector<std::vector<int>>>& split_results_)
+void Matching_control::showGroupStatus(const vvv_int& split_results_)
 {
 	// Retrieve the number of groups
 	const int group_number = split_results_.size();
@@ -257,6 +262,23 @@ void Matching_control::showGroupStatus(const std::vector<std::vector<std::vector
 	}
 
 	std::cout << std::endl;
+}
+
+void Matching_control::showGroupStatus(const vv_int& groups_)
+{
+	// Retrieve the number of groups
+	const int group_number = groups_.size();
+
+	// Output the layout of current graph
+	std::cout << std::endl;
+	for (int i = 0; i < group_number; i++) {
+		std::cout << "Group " << i << ": ";
+		for (int j = 0; j < groups_[i].size(); j++) {
+			std::cout << groups_[i][j] << " ";
+		}
+		std::cout << std::endl;
+	}
+	std::cout << "=================================" << std::endl;
 }
 
 void Matching_control::displayMatchings(
@@ -574,7 +596,7 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 				break;
 			}
 
-			std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num << "% completes ..." << std::endl;
+			std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num * 100 << "% completes ..." << std::endl;
 		}
 
 		// Push the current graph into the storage
@@ -587,7 +609,7 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 	return graphs;
 }
 
-std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_validate_grouped_nodes(
+std::vector<Graph_disamb> Matching_control::constructGraph_with_grouped_nodes(
 	const bool						minimum_guided_,
 	const Eigen::MatrixXf&			origin_score_,
 	std::vector<std::vector<int>>	grouped_nodes_
@@ -603,88 +625,13 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 	Eigen::MatrixXf grouped_scores = construct_score_grouped_nodes_topN(minimum_guided_, origin_score_, grouped_nodes_);
 	assert(grouped_scores.rows() == image_num);
 
-	// Calculate how many nodes are in the current graph
-	int numberNodes_inGraph = std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0);
-
 	// Double while loop is used to construct multiple graphs in case the database is inherently not continuous
-	while (numberNodes_inGraph < image_num) {
+	while (std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) < image_num) {
 
-		// Find the first node that is not in the current graph
-		int start_node = std::find(nodes_inGraph.begin(), nodes_inGraph.end(), 0) - nodes_inGraph.begin();
+		Graph_disamb graph = Utility::construct_singleGraph(minimum_guided_, grouped_scores, nodes_inGraph);
 
-		// Initialize a graph for the current round
-		Graph_disamb graph(image_num);
-		std::vector<int> current_nodes;
-
-		// Add the start node into the graph
-		nodes_inGraph[start_node] = 1;
-		current_nodes.push_back(start_node);
-
-		std::vector<int> srcNode_vec;
-		std::vector<int> desNode_vec;
-		std::vector<float> score_vec;
-
-		// ===== Construct current graph =====
-		while (current_nodes.size() < image_num) {
-
-			// Clear the vectors
-			srcNode_vec.clear();
-			desNode_vec.clear();
-			score_vec.clear();
-
-			// Analyze and store links into the structure
-			for (int i = 0; i < current_nodes.size(); i++) {
-
-				const int src_node_index = current_nodes[i];
-				for (int j = 0; j < image_num; j++) {
-
-					// All informatin is defualt to be stored in the upper triangle
-					if (src_node_index == j) {
-						continue;
-					}
-					else {
-						const float score = (src_node_index < j) ? grouped_scores(src_node_index, j) : grouped_scores(j, src_node_index);
-						if (score > 0 && nodes_inGraph[j] == 0) {
-
-							score_vec.push_back(score);
-							srcNode_vec.push_back(src_node_index);
-							desNode_vec.push_back(j);
-						}
-					}
-				}
-			}
-			// End of links scanning
-
-			if (score_vec.size() > 0) {
-
-				// This part searches for the top N link candidates and return the best link
-				// TODO
-				sort_indices(score_vec, srcNode_vec, minimum_guided_);
-				sort_indices(score_vec, desNode_vec, minimum_guided_);
-
-				// TODO
-				int best_link_index = 0;
-
-				// Update the status of the new node
-				nodes_inGraph[desNode_vec[best_link_index]] = 1;
-				current_nodes.push_back(desNode_vec[best_link_index]);
-
-				// Add the link to the current graph
-				graph.addEdge(srcNode_vec[best_link_index], desNode_vec[best_link_index]);
-			}
-			else {
-				// No link can be found
-				break;
-			}
-
-			std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num << "% completes ..." << std::endl;
-		}
-
-		// Push  the current graph into the storage
+		// Push the current graph into the storage
 		graphs.push_back(graph);
-
-		// Update the status of all nodes
-		numberNodes_inGraph = std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0);
 	}
 	
 	return graphs;
@@ -816,7 +763,7 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_stitcher(
 				break;
 			}
 
-			// std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num << "% completes ..." << std::endl;
+			// std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num * 100 << "% completes ..." << std::endl;
 
 			//std::cout << std::endl;
 			//for (int ii = 0; ii < current_nodes.size(); ii++) {
@@ -837,19 +784,26 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_stitcher(
 	return graphs;
 }
 
-std::vector<std::vector<std::vector<int>>> Matching_control::split_graph(
+vvv_int Matching_control::split_graph(
 	const bool						minimum_guided_,
 	const Eigen::MatrixXf&			origin_score_,
 	Graph_disamb&					graph_,
 	std::vector<std::vector<int>>	grouped_nodes_,
 	Graph_disamb*&					upper_graph_,
 	Graph_disamb*&					lower_graph_,
-	std::vector<int>&				upper_set,
-	std::vector<int>&				lower_set
+	v_int&							upper_set,
+	v_int&							lower_set
 )
 {
+	// Clear the previous data
+	upper_set.clear();
+	lower_set.clear();
+
 	// The split groups to be returned
-	std::vector<std::vector<std::vector<int>>> split_groups(2);
+	vvv_int split_groups(2);
+
+	// Retrieve the graph layout
+	const Eigen::MatrixXi graph = graph_.getLayout();
 
 	// Get number of nodes in the graph
 	const int node_num			= grouped_nodes_.size();
@@ -857,15 +811,12 @@ std::vector<std::vector<std::vector<int>>> Matching_control::split_graph(
 
 	// Shrink the indices of the original graph to the compact graph
 	int cntr = 0;
-	std::vector<int> compact_indices(node_num, -1);
+	v_int compact_indices(node_num, -1);
 	for (int i = 0; i < node_num; i++) {
 		if (graph_.get_node_status(i) == 1) {
 			compact_indices[i] = cntr++;
 		}
 	}
-
-	// Retrieve the graph layout
-	const Eigen::MatrixXi graph = graph_.getLayout();
 
 	// Construct a score matrix for the current graph configuration
 	Eigen::MatrixXf grouped_scores = construct_score_grouped_nodes_topN(minimum_guided_, origin_score_, grouped_nodes_);
@@ -877,7 +828,6 @@ std::vector<std::vector<std::vector<int>>> Matching_control::split_graph(
 
 		for (int i = 0; i < node_num - 1; i++) {
 			for (int j = i + 1; j < node_num; j++) {
-
 				if (grouped_scores(i, j) > 0) {
 					grouped_scores(i, j) = max_score - grouped_scores(i, j);
 				}
@@ -888,23 +838,21 @@ std::vector<std::vector<std::vector<int>>> Matching_control::split_graph(
 	// Set initial values
 	int		best_source;
 	int		best_sink;
-	float	best_score = 100000000;
+	float	best_score = std::numeric_limits<float>::max();
 
 	// ===== Find source and sink node =====
 	for (int i = 0; i < node_num - 1; i++) {
 		for (int j = i + 1; j < node_num; j++) {
-
 			if (graph_.get_node_status(i) == 1 && graph_.get_node_status(j) == 1 && grouped_scores(i, j) < best_score) {
-
 				best_source = i;
-				best_sink = j;
-				best_score = grouped_scores(i, j);
+				best_sink	= j;
+				best_score	= grouped_scores(i, j);
 			}
 		}
 	}
 
 	// Empty graph case
-	if (best_score == 100000000) {
+	if (best_score == std::numeric_limits<float>::max()) {
 		return split_groups;
 	}
 	
@@ -1155,14 +1103,17 @@ std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split_gra
 	return split_results;
 }
 
-std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
+vvv_int Matching_control::iterative_split(
 	const bool						minimum_guided_,
 	const Eigen::MatrixXf&			origin_score_,
-	std::vector<std::vector<int>>	grouped_nodes_,
+	const vv_int&					grouped_nodes_,
 	Graph_disamb&					graph_,
-	std::vector<std::vector<int>>&  split_indices
+	vv_int&							split_indices
 )
 {
+	// Clear the previous data
+	split_indices.clear();
+
 	// Get the number of nodes in the graph
 	const int node_num = grouped_nodes_.size();
 
@@ -1170,17 +1121,19 @@ std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
 	assert(node_num > 2);
 
 	// The final split results to be returned
-	std::vector<std::vector<std::vector<int>>> split_results;
+	vvv_int split_results;
 
 	// Initialize a index vector
-	std::vector<int> initial_indices(node_num);
+	v_int initial_indices(node_num);
 	std::iota(initial_indices.begin(), initial_indices.end(), 0);
 
 	// Initialize the to be processed groups
-	std::vector<std::vector<std::vector<int>>> to_be_processed(1);
+	v_int	upper_set;
+	v_int	lower_set;
+	vv_int	indices_vec;
+	vvv_int to_be_processed(1);
 	std::vector<Graph_disamb> graph_vec;
-	std::vector<std::vector<int>> indices_vec;
-
+	
 	to_be_processed[0] = grouped_nodes_;
 	graph_vec.push_back(graph_);
 	indices_vec.push_back(initial_indices);
@@ -1191,10 +1144,7 @@ std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
 		Graph_disamb* upper_graph;
 		Graph_disamb* lower_graph;
 
-		std::vector<int> upper_set;
-		std::vector<int> lower_set;
-
-		std::vector<std::vector<std::vector<int>>> results = split_graph(minimum_guided_, origin_score_,
+		vvv_int results = split_graph(minimum_guided_, origin_score_,
 			graph_vec.back(), to_be_processed.back(), upper_graph, lower_graph, upper_set, lower_set);
 		translate_indices(indices_vec.back(), upper_set, lower_set);
 
@@ -1226,59 +1176,49 @@ std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
 	return split_results;
 }
 
+// =================================================== //
+// This function is the main control function
+// =================================================== //
+
 void Matching_control::iterative_group_split(
-	const bool				minimum_guided_,
-	const Eigen::MatrixXf&	origin_score_
+	const bool				minimum_guided_
 )
 {
 	// Copy the origin score
-	Eigen::MatrixXf origin_score_on_fly = origin_score_;
+	Eigen::MatrixXf origin_score_on_fly = match.getMatching_number_mat_float();
 
 	// Get the number of images in the database
 	const int image_num = img_ctrl.getImageNum();
-	assert(image_num == origin_score_.rows());
+	assert(image_num == origin_score_on_fly.rows());
 
-	// Initialize for the gropus
-	std::vector<std::vector<int>> groups(image_num);
-	for (int i = 0; i < image_num; i++) {
-		groups[i].push_back(i);
+	int		group_size = image_num + 1;
+	vv_int  groups = Utility::initGroups(image_num);
+	vv_int  split_indices;
+	vvv_int split_results;
+	Graph_disamb global_graph(image_num);
+
+	while (groups.size() > 2 && groups.size() < group_size) {
+
+		group_size = groups.size();
+		std::vector<Graph_disamb> graphs = constructGraph_with_grouped_nodes(minimum_guided_, origin_score_on_fly, groups);
+
+		for (int i = 0; i < graphs.size(); i++) {
+			std::cout << std::endl << "Processing Graph " << i << std::endl;
+			split_results = iterative_split(minimum_guided_, origin_score_on_fly, groups, graphs[i], split_indices);
+			groups = validate_add_edges_width_SFM(origin_score_on_fly, split_results, global_graph);
+			showGroupStatus(groups);
+		}
+		system("pause");
 	}
 
-	// Initialize the warp difference
-	std::vector<std::vector<float>> warped_diff(image_num);
-	std::vector<std::vector<int>> split_indices;
-
-	// TODO
-	while (groups.size() > 2) {
-
-		split_indices.clear();
-		std::vector<Graph_disamb> graphs = constructGraph_with_homography_validate_grouped_nodes(minimum_guided_, origin_score_on_fly, groups);
-		std::vector<std::vector<std::vector<int>>> split_results = iterative_split(minimum_guided_, origin_score_on_fly, groups, graphs[0], split_indices);
-		showGroupStatus(split_results);
-		groups = validate_add_edges(origin_score_on_fly, split_results, warped_diff, split_indices);
-
-		//for (int i = 0; i < groups.size(); i++) {
-		//	std::cout << "Group " << i << ": ";
-
-		//	for (int j = 0; j < groups[i].size(); j++) {
-		//		std::cout << groups[i][j] << "  ";
-		//	}
-
-		//	std::cout << std::endl;
-		//}
-		//std::cout << std::endl;
-
-		//for (int i = 0; i < warped_diff.size(); i++) {
-
-		//	std::cout << "Record " << i << " : ";
-		//	for (int j = 0; j < warped_diff[i].size(); j++) {
-		//		std::cout << warped_diff[i][j] << " ";
-		//	}
-		//	std::cout << std::endl;
-		//}
-
-		//system("pause");
+	// Last round
+	if (groups.size() == 2) {
+		groups = validate_last_edge_width_SFM(origin_score_on_fly, groups, global_graph);
+		showGroupStatus(groups);
 	}
+
+	// Write out the matches
+	writeOut_Matchings(global_graph);
 }
 
 // ============================================================== //
@@ -1288,7 +1228,7 @@ void Matching_control::iterative_group_split(
 // number of matches. 
 // ============================================================== //
 
-std::vector<std::vector<int>> Matching_control::validate_add_edges(
+std::vector<std::vector<int>> Matching_control::validate_add_edges_with_homography(
 	Eigen::MatrixXf&							origin_score_on_fly,
 	std::vector<std::vector<std::vector<int>>>& split_results_,
 	std::vector<std::vector<float>>&			warped_diff_,
@@ -1496,6 +1436,69 @@ std::vector<std::vector<int>> Matching_control::validate_add_edges(
 	return combined_groups;
 }
 
+// BMVC
+vv_int Matching_control::validate_add_edges_width_SFM(
+	const Eigen::MatrixXf&		score_mat_,
+	vvv_int&					split_results_,
+	Graph_disamb&				global_graph_
+)
+{
+	const int group_num = split_results_.size();
+
+	v_int srcNode_vec;
+	v_int desNode_vec;
+	v_int machNum_vec;
+	vv_int combined_groups;
+
+	for (int i = 0; i < group_num; i++) {
+
+		// Only one group in the section
+		if (split_results_[i].size() == 1) {
+			combined_groups.push_back(split_results_[i][0]);
+		}
+		// More than one group in the section
+		else if (split_results_[i].size() == 2) {
+
+			// Find the top N pairs with the most number of matches //
+			Utility::computeMatches_betnGroups(i, score_mat_, split_results_, srcNode_vec, desNode_vec, machNum_vec);
+
+			// TODO: Use SFM to find best link
+			int bst_link = 0;
+			const int bst_src = srcNode_vec[bst_link];
+			const int bst_dst = desNode_vec[bst_link];
+
+			// Accept the link
+			{
+				std::cout << "New Link: (" << bst_src << ", " << bst_dst << ")" << std::endl;
+				v_int fusion = Utility::mergeGroups(i, split_results_);
+				combined_groups.push_back(fusion);
+				global_graph_.addEdge(bst_src, bst_dst);
+			}
+			// Reject the link
+			{
+			}
+		}
+		else {
+			std::cout << "validate_add_edges_width_SFM: more than two sets exists in one group ..." << std::endl;
+		}
+	}
+
+	return combined_groups;
+}
+
+vv_int Matching_control::validate_last_edge_width_SFM(
+	const Eigen::MatrixXf&		score_mat_,
+	vv_int&						groups_,
+	Graph_disamb&				global_graph_
+)
+{
+	vvv_int groups_extended(1);
+	groups_extended[0] = groups_;
+	vv_int combined_groups = validate_add_edges_width_SFM(score_mat_, groups_extended, global_graph_);
+
+	return combined_groups;
+}
+
 Eigen::MatrixXf Matching_control::construct_score_grouped_nodes(
 	const Eigen::MatrixXf&			origin_score_,
 	std::vector<std::vector<int>>&	grouped_nodes_
@@ -1544,27 +1547,22 @@ Eigen::MatrixXf Matching_control::construct_score_grouped_nodes_topN(
 )
 {
 	// Note, only upper triangle is used
-	const int group_number = grouped_nodes_.size();
-	Eigen::MatrixXf new_score = Eigen::MatrixXf::Ones(group_number, group_number) * -1;
+	const int group_number		= grouped_nodes_.size();
+	Eigen::MatrixXf new_score	= Eigen::MatrixXf::Ones(group_number, group_number) * -1;
+	v_float score_record;
 
 	for (int i = 0; i < group_number - 1; i++) {
 		for (int j = i + 1; j < group_number; j++) {
+			score_record.clear();
 
-			std::vector<float> score_record;
 			for (int ii = 0; ii < grouped_nodes_[i].size(); ii++) {
+				int left_index = grouped_nodes_[i][ii];
+
 				for (int jj = 0; jj < grouped_nodes_[j].size(); jj++) {
 
-					int left_index  = grouped_nodes_[i][ii];
 					int right_index = grouped_nodes_[j][jj];
 					assert(left_index != right_index);
-
-					if (left_index > right_index) {
-						int swap_tmp	= left_index;
-						left_index		= right_index;
-						right_index		= swap_tmp;
-					}
-
-					score_record.push_back(origin_score_(left_index, right_index));
+					score_record.push_back(origin_score_(std::min(left_index, right_index), std::max(left_index, right_index)));
 				}
 			}
 

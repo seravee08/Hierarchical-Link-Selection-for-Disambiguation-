@@ -157,7 +157,8 @@ int main()
 	//}
 
 	mach_ctrl.readIn_Matchings();
-	mach_ctrl.dummy_control();
+	mach_ctrl.iterative_group_split(false);
+	//mach_ctrl.dummy_control();
 
 
 	

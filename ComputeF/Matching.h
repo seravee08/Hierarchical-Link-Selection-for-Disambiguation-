@@ -32,6 +32,9 @@ public:
 	// Write matches out into .txt file
 	void write_matches(std::vector<Graph_disamb>& graphs_);
 
+	// Write matches out to .txt filef
+	void write_matches(Graph_disamb& graph_);
+
 	// Write matches between a pair of images to .txt file
 	void write_matches_1v1(int l_, int r_);
 
@@ -153,10 +156,16 @@ public:
 	Eigen::MatrixXf getWarped_diff();
 
 	// Get the matching number matrix
-	Eigen::MatrixXi getMatching_number();
+	Eigen::MatrixXi getMatching_number_mat();
+
+	// Get the matching number matrix in float
+	Eigen::MatrixXf getMatching_number_mat_float();
 
 	// Rectify matchings according to homography mask
 	void rectify_matchings_homoMask();
+
+	// Generate float matches number matrix
+	void generate_float_matching_number_mat();
 
 	// Output the 3D points cloud as .ply file
 	static void points_to_ply(
@@ -177,6 +186,7 @@ private:
 
 	// Note: all information are stored only in the upper triangle!!
 	Eigen::MatrixXi														matching_number_mat;
+	Eigen::MatrixXf														matching_number_mat_float;
 	Eigen::MatrixXf														warped_diff_mat;
 
 	// Stores all the matchings matrix and outlier mask in a 2-dimensional vector in upper tirangle
