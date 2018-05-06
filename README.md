@@ -2,8 +2,8 @@
 Duplicate Strucutre Disambiguation
 
 Enviroments:
-Windows 10 64bit
-Visual Studio 2013
+- Windows 10 64bit
+- Visual Studio 2013
 
 Dependencies:
 - OpenCV330 (https://opencv.org/releases.html)
@@ -14,3 +14,8 @@ Dependencies:
 The OpenCV library should be compiled from source with contrib and VTK enabled for VIZ.
 If you would like to use the bilateral filter (http://www.robots.ox.ac.uk/~tvg/publications/2016/matching.pdf),
 you can refer to this site (https://sites.google.com/site/adscsfm/home/aligning-images-in-the-wild/code).
+
+The path to VisualSFM executable should be set properly to run the programs.
+The program can run with feature matchings only. If you enable the display mode,
+.sift files and image files will also be needed. The sift file and maching file
+format are compatible with VisualSFM.
