@@ -9,17 +9,27 @@
 
 class Graph_disamb {
 public:
+	Graph_disamb();
+
 	Graph_disamb(const int node_num_);
 
 	~Graph_disamb() {};
 
+	// Set node number and initialize the arrays
+	void setNodeNum(const int num_);
+
 	// Return the layout
 	Eigen::MatrixXi getLayout();
 
+	// Set the layout
+	void setLayout(
+		const Eigen::MatrixXi& layout_
+	);
+
 	// Add an edge between two nodes
 	void addEdge(
-		int source_index_,
-		int desti_index_
+		const int source_index_,
+		const int desti_index_
 	);
 
 	// Return the status for a node
@@ -29,7 +39,7 @@ public:
 	int number_nodes_inGraph();
 
 private:
-	const int node_num;
+	int node_num;
 
 	// The status of each node
 	std::vector<int> node_status;

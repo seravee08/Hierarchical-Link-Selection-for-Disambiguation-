@@ -51,7 +51,7 @@ void reconstruct(vector<pair<int, int>>& queue) {
 	}
 }
 
-int main()
+int main(int argc, char* argv[])
 {
 	//// Declare path to the image list
 	//std::string image_list_path = "C:/Users/fango/OneDrive/Documents/GitHub/ComputeF/data/oats/image_list.txt";
@@ -142,11 +142,15 @@ int main()
 
 
 
-	string direc = string("C:/Users/fango/OneDrive/Documents/data/Semper-Statue");
+	string direc = string("C:/Users/fango/OneDrive/Documents/data/fc");
+	//if (argc == 2) {
+	//	cout << "folder location passed = " << argv[1] << endl;
+	//	direc = string(argv[1]);
+	//}
 	string vsfm_exe = string("C:/Apps/VisualSFM_windows_cuda_64bit");
 
 	string list_path = create_list(direc);
-	Matching_control mach_ctrl(list_path);
+	Matching_control mach_ctrl(direc, list_path);
 	mach_ctrl.set_vsfm_path(vsfm_exe);
 
 	//{
@@ -156,16 +160,20 @@ int main()
 	//mach_ctrl.write_matches_1v1();
 	//}
 
+	//mach_ctrl.readIn_Keypoints();
+	//mach_ctrl.change_direc_matching();
 	//mach_ctrl.readIn_Matchings();
-	//std::vector<int> setA;
-	//std::vector<int> setB;
-	//setA.push_back(0);
-	//setA.push_back(1);
-	//setB.push_back(2);
-	//mach_ctrl.triangulate_VSFM(setA, setB);
+	//mach_ctrl.displayMatchings(34, 150, false, false);
+	mach_ctrl.iterative_group_split(true, false);
+	//mach_ctrl.dummy_control();
+
+
 	
 	//mach_ctrl.displayMatchings(0, 1, false, true);
 	//mach_ctrl.triangulateTwoCameras(0, 1, true);
+	mach_ctrl.convertMatching_heinly(direc + "/converted.txt");
+
+
 
 	system("pause");
 

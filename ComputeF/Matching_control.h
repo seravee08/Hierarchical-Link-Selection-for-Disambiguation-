@@ -6,18 +6,31 @@
 #include "Graph_Disamb.h"
 #include "Image_control.h"
 #include "Matching.h"
+#include "utility.h"
+
+// ===== MatLAB Library =====
+#include "engine.h"
 
 class Matching_control {
 public:
-	Matching_control(const std::string image_list_path_);
+	Matching_control(
+		const std::string direc_,
+		const std::string image_list_path_
+	);
 
-	~Matching_control() {}
+	~Matching_control();
 
 	// Read in sift and affine information
 	void readIn_Keypoints();
 
 	// Read in matchings
 	void readIn_Matchings();
+
+	// Convert matching file to be compatible with Heinly's
+	void convertMatching_heinly(const std::string converted_path_);
+
+	// Fix the directory of the matchings file
+	void change_direc_matching();
 
 	// Compute Sift feature using OpenCV functions locally
 	void compute_Sift(int index = -1);
@@ -34,6 +47,12 @@ public:
 	// Write out matchings
 	void writeOut_Matchings(std::vector<Graph_disamb>& graphs_);
 
+	// Write out matchings
+	void writeOut_Matchings(Graph_disamb& graph_);
+
+	// Write matches out to .txt file with double link
+	void write_matches_stren(Graph_disamb& graph_);
+
 	// Write out matches for a single image pair
 	void write_matches_1v1(int l_ = -1, int r_ = -1);
 
@@ -42,6 +61,9 @@ public:
 
 	// Write matches between the designated pairs
 	std::string write_matches_designated(const std::string file_name_, const std::vector<cv::Point2i>& linkages);
+
+	// Write temporary image list containing only target images
+	void write_list(const std::string name_, const std::vector<cv::Point2i>& linkages_);
 
 	// Write out graph layout
 	void writeOut_Layout(std::vector<Graph_disamb>& graphs_);
@@ -80,7 +102,10 @@ public:
 	void displayKeypoints(int index_);
 
 	// Display the group status of current round
-	void showGroupStatus(const std::vector<std::vector<std::vector<int>>>& split_results_);
+	void showGroupStatus(const vvv_int& split_results_);
+
+	// Display the group status of current round
+	void showGroupStatus(const vv_int& groups_);
 		
 	// Return the number of matches between the image pair
 	int getMatch_number(
@@ -102,6 +127,12 @@ public:
 		const bool  locally_computed  = false
 	);
 
+	// Display images
+	void displayImages(
+		const int		cell_size_,
+		const v_int&	ind_
+	);
+
 	// Construct a new score matrix for the grouped nodes
 	Eigen::MatrixXf construct_score_grouped_nodes(
 		const Eigen::MatrixXf&			origin_score_,
@@ -111,6 +142,7 @@ public:
 	// Construct a new score matrix for the grouped nodes, only top N pairs are considered
 	Eigen::MatrixXf construct_score_grouped_nodes_topN(
 		const bool						minimum_guided_,
+		const int						topN_to_search_,
 		const Eigen::MatrixXf&			origin_score_,
 		std::vector<std::vector<int>>&	grouped_nodes_
 	);
@@ -129,24 +161,26 @@ public:
 	);
 
 	// Split the graph
-	std::vector<std::vector<std::vector<int>>> split_graph(
+	vvv_int split_graph(
 		const bool						minimum_guided_,
 		const Eigen::MatrixXf&			origin_score_,
 		Graph_disamb&					graph_,
 		std::vector<std::vector<int>>	grouped_nodes_,
+		const int						topN_to_search_,
 		Graph_disamb*&					upper_graph_,
 		Graph_disamb*&					lower_graph_,
-		std::vector<int>&				upper_set,
-		std::vector<int>&				lower_set
+		v_int&							upper_set,
+		v_int&							lower_set
 	);
 
 	// Split the nodes based on the input graph
-	std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
+	vvv_int Matching_control::iterative_split(
 		const bool						minimum_guided_,
 		const Eigen::MatrixXf&			origin_score_,
-		std::vector<std::vector<int>>	grouped_nodes_,
+		const vv_int&					grouped_nodes_,
 		Graph_disamb&					graph_,
-		std::vector<std::vector<int>>&  split_indices
+		const int						topN_to_search_,
+		vv_int&							split_indices
 	);
 
 	// Split the graph independent from the graph constructed for this round
@@ -164,17 +198,34 @@ public:
 	);
 
 	// Analyze the groups and add eges
-	std::vector<std::vector<int>> validate_add_edges(
+	std::vector<std::vector<int>> validate_add_edges_with_homography(
 		Eigen::MatrixXf&							origin_score_on_fly,
 		std::vector<std::vector<std::vector<int>>>& split_results_,
 		std::vector<std::vector<float>>&			warped_diff,
 		std::vector<std::vector<int>>&				split_indices
 	);
 
+	// Analyze the groups and validate edges with geometric cues: BMVC added
+	vv_int validate_add_edges_width_SFM(
+		const int					bigGP_threshold,
+		const int					search_R_,
+		const Eigen::MatrixXf&		score_mat_,
+		vvv_int&					split_results_,
+		Graph_disamb&				global_graph_
+	);
+
+	vv_int validate_last_edge_width_SFM(
+		const int					bigGP_threshold,
+		const int					search_R_,
+		const Eigen::MatrixXf&		score_mat_,
+		vv_int&						groups_,
+		Graph_disamb&				global_graph_
+	);
+
 	// Iteratively construct and split the graphs
 	void iterative_group_split(
-		const bool				minimum_guided_,
-		const Eigen::MatrixXf&	origin_score_
+		const bool				continued_,
+		const bool				minimum_guided_
 	);
 
 	// Construct graph using the provided scores and filtered by homography difference scores
@@ -184,9 +235,9 @@ public:
 	);
 
 	// Construct graphs for grouped nodes with same settings
-	std::vector<Graph_disamb> constructGraph_with_homography_validate_grouped_nodes(
+	std::vector<Graph_disamb> constructGraph_with_grouped_nodes(
 		const bool						minimum_guided_,
-		const Eigen::MatrixXf&			origin_score_,
+		const Eigen::MatrixXf&			grouped_scores_,
 		std::vector<std::vector<int>>	grouped_nodes_
 	);
 
@@ -210,17 +261,187 @@ public:
 	);
 
 	// =========== BMVC: VSFM SfM Functions =============
-	void set_vsfm_path(const std::string path_);
+	void set_vsfm_path(
+		const std::string path_
+	);
 
-	void triangulate_VSFM(const std::vector<int>& setA, const std::vector<int>& setB);
+	void triangulate_VSFM(
+		const std::vector<int>& setA,
+		const std::vector<int>& setB,
+		const bool interrupted = false
+	);
 
-	std::vector<cv::Point2i> linkage_selection(const std::vector<int>& setA, const std::vector<int>& setB);
+	bool linkage_selection(
+		const std::vector<int>& setA,
+		const std::vector<int>& setB,
+		const bool interrupted = false
+	);
+
+	int find_closestCam(
+		int index_,
+		int group_id_
+	);
+
+	void find_closestCam(
+		CameraT&					tar_cam_,
+		std::vector<CameraT>&		cams_,
+		int&						closest_ind_,
+		float&						closest_dis_
+	);
+
+	void find_closestCam(
+		CameraT&					tar_cam_,
+		std::vector<CameraT>&		cams_,
+		std::vector<int>&			index_
+	);
+
+	void find_closestCam_interGP(
+		const int					t_,
+		v_int&						ind_
+	);
+
+	void compute_camDisVec(
+		std::vector<CameraT>		cams_,
+		v_float&					cam_dis_
+	);
+
+	float compute_cam_dis(
+		CameraT& l_,
+		CameraT& r_
+	);
+
+	void commit_cams(
+		const std::vector<CameraT>&		cams_,
+		const std::vector<int>&			cams_ind_,
+		std::vector<Point3D>			pt3d_,
+		const int						group_id_
+	);
+
+	void commit_cams_without_pt3d(
+		const std::vector<CameraT>&		cams_,
+		const std::vector<int>&			cams_ind_,
+		const int						group_id_
+	);
+
+	bool call_VSFM(
+		std::vector<cv::Point2i>&	linkages_,
+		const std::string&			match_name_,
+		const std::string&			nvm_path_,
+		bool						save_matches_file	= false,
+		bool						resume				= false,
+		const std::string&			original_file		= std::string(""),
+		const std::string&			tmp_nvm_path_		= std::string("")
+	);
+
+	float convhull_volume(
+		std::vector<CameraT>& cams_
+	);
+
+	float convhull_volume(
+		std::vector<Point3D>& pt3d_
+	);
+
+	void readIn_NVM(
+		std::string	nvm_path
+	);
+
+	void delete_MAT(
+		int index_
+	);
+
+	void delete_MAT(
+		const std::vector<int>& index_
+	);
+
+	void dummy_control();
+
+	// ========== BMVC: Iterative grouping hybrid framework ===========
+	void update_cam_groupID(
+		const vv_int&	new_groups_
+	);
+
+	void groupModel_generate(
+		const std::string		nvm_name,
+		const v_int&			group_,
+		Graph_disamb&			global_graph_,
+		std::vector<CameraT>&	cams_,
+		std::vector<int>&		cam_index_,
+		const bool				display
+	);
+
+	void fusionModel_generate(
+		const vv_int&			splits_,
+		Graph_disamb&			global_graph_,
+		const cv::Point2i		link_,
+		const bool				display_
+	);
+
+	cv::Point2i SFM_validate_Logic(
+		const vv_int&			splits_,
+		Graph_disamb&			global_graph_,
+		const int				search_radius_,
+		const v_int&			src_,
+		const v_int&			des_,
+		const bool				display_group_,
+		const bool				display_merge_
+	);
+
+	float Matching_control::SFM_validate_Logic_simple(
+		const int					src_,
+		const int					des_,
+		const int					R_,
+		const Eigen::MatrixXf&		score_mat_,
+		const Eigen::MatrixXi&		layout_,
+		const bool					display_
+	);
+
+	bool computeMatches_intraGroups(
+		const int					t_,
+		const Eigen::MatrixXf&		score_mat_,
+		v_int&						ind_vec_,
+		v_int&						scr_vec_
+	);
+
+	bool oscilation_detector(
+		const int				bigGP_threshold,
+		const int				search_R_,
+		const vv_int&			ind1_,
+		const vv_int&			ind2_,
+		const vv_int&			group_,
+		Eigen::MatrixXf&		score_mat_,
+		Graph_disamb&			global_graph_,
+		vvv_int&				split_disamb_res_
+	);
+
+	float geometric_resolve_logic(
+		const int						src_,
+		const int						des_,
+		const v_int&					cam_index_,
+		const std::vector<CameraT>&		cams_
+	);
 
 private:
-	std::string		vsfm_exec;
-	std::string		image_list_path;
-	Image_control	img_ctrl;
-	Matching		match;
+	int									image_num;
+	std::string							vsfm_exec;
+	std::string							direc;
+
+	// For SFM validation use
+	std::string							nvm_name_fst;
+	std::string							nvm_name_sec;
+	std::string							nvm_name_union;
+	std::string							mach_name;
+	std::string							log_name;
+
+	std::vector<CameraT>				cams;
+	std::vector<std::vector<Point3D>>	pt3d;
+	std::vector<int>					cams_group_id;
+
+	Image_control						img_ctrl;
+	Matching							match;
+	Viewer								viewer;
+	Utility								utility;
+
+	Engine								*ep;
 };
 
 

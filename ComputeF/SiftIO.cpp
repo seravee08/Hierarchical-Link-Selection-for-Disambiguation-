@@ -91,6 +91,21 @@ std::string Image_info::extract_AUX_name(const std::string img_name_)
 	return aux_name;
 }
 
+std::string Image_info::extract_MAT_name(const std::string img_name_)
+{
+	std::string des_path;
+	std::string des_name;
+	std::string post_fix = ".mat";
+	std::string mat_name;
+
+	// Split the directory into path and object name
+	splitFilename(img_name_, des_path, des_name);
+	mat_name = des_path + "/" + des_name + post_fix;
+
+	// Return the composed name
+	return mat_name;
+}
+
 std::vector<float> Image_info::compute_gist(cv::Mat target_)
 {
 	std::vector<float> result;

@@ -12,6 +12,7 @@
 #include "Matching_control.h"
 #include "graph.h"
 
+// ===== OpenCV Library =====
 #include "opencv2/stitching.hpp"
 
 // ===== Boost Library =====
@@ -20,13 +21,39 @@
 
 typedef Graph<float, float, float> GraphType;
 
-Matching_control::Matching_control(const std::string image_list_path_) :
+Matching_control::Matching_control(
+	const std::string direc_,
+	const std::string image_list_path_) :
 	vsfm_exec		(""),
-	image_list_path	(image_list_path_),
+	direc			(direc_),
+	nvm_name_fst	(direc + "/o_1.nvm"),
+	nvm_name_sec	(direc + "/o_2.nvm"),
+	nvm_name_union  (direc + "/o_u.nvm"),
+	mach_name		("matches_tmp.txt"),
+	log_name		(direc + "/log.txt"),
 	img_ctrl		(image_list_path_),
 	match			(image_list_path_)
 {
+	image_num = img_ctrl.getImageNum();
+	cams.resize(image_num);
+	cams_group_id = std::vector<int>(image_num);
+	std::iota(std::begin(cams_group_id), std::end(cams_group_id), 0);
 
+	// ===== Start the Matlab engine =====
+	//if (!(ep = engOpen(""))) {
+	//	std::cout << "Matlab engine start failed ..." << std::endl;
+	//	exit(-1);
+	//}
+}
+
+Matching_control::~Matching_control()
+{
+	cams.clear();
+	pt3d.clear();
+	cams_group_id.clear();
+
+	// Shut down the Matlab engine
+	// engClose(ep);
 }
 
 void Matching_control::readIn_Keypoints()
@@ -42,6 +69,18 @@ void Matching_control::readIn_Matchings()
 	match.read_matchings();
 
 	std::cout << "Matchings readin completes ..." << std::endl;
+}
+
+void Matching_control::convertMatching_heinly(const std::string converted_path_)
+{
+	match.convertMatching_Heinly(converted_path_);
+}
+
+void Matching_control::change_direc_matching()
+{
+	match.change_direc_matching();
+
+	std::cout << "Directory is fixed ..." << std::endl;
 }
 
 void Matching_control::compute_Sift(int index)
@@ -123,6 +162,16 @@ void Matching_control::writeOut_Matchings(std::vector<Graph_disamb>& graphs_)
 	match.write_matches(graphs_);
 }
 
+void Matching_control::writeOut_Matchings(Graph_disamb& graph_)
+{
+	match.write_matches(graph_);
+}
+
+void  Matching_control::write_matches_stren(Graph_disamb& graph_)
+{
+	match.write_matches_stren(graph_);
+}
+
 void Matching_control::write_matches_1v1(int l_, int r_)
 {
 	if (l_ < 0 || r_ < 0) {
@@ -152,6 +201,11 @@ std::string Matching_control::write_matches_designated(const std::string file_na
 	return match.write_matches_designated(file_name_, linkages);
 }
 
+void Matching_control::write_list(const std::string name_, const std::vector<cv::Point2i>& linkages_)
+{
+	return match.write_list(name_, linkages_);
+}
+
 void Matching_control::writeOut_Layout(std::vector<Graph_disamb>& graphs_)
 {
 	match.write_layout(graphs_);
@@ -174,7 +228,7 @@ Eigen::MatrixXf Matching_control::getWarped_diff_mat()
 
 Eigen::MatrixXi Matching_control::getMatching_number_mat()
 {
-	return match.getMatching_number();
+	return match.getMatching_number_mat();
 }
 
 void Matching_control::displayKeypoints(int index_)
@@ -187,8 +241,8 @@ int Matching_control::getMatch_number(
 	const int right_index_
 )
 {
-	Image_info& left_image  = img_ctrl.getImageInfo(left_index_);
-	Image_info& right_image = img_ctrl.getImageInfo(right_index_);
+	Image_info& left_image  = img_ctrl.getImageInfo(std::min(left_index_, right_index_));
+	Image_info& right_image = img_ctrl.getImageInfo(std::max(left_index_, right_index_));
 
 	return match.get_matching_number(left_image, right_image);
 }
@@ -217,7 +271,7 @@ float Matching_control::getWarped_diff_value(
 	return match.getWarped_diff()(left_index_, right_index_);
 }
 
-void Matching_control::showGroupStatus(const std::vector<std::vector<std::vector<int>>>& split_results_)
+void Matching_control::showGroupStatus(const vvv_int& split_results_)
 {
 	// Retrieve the number of groups
 	const int group_number = split_results_.size();
@@ -238,6 +292,23 @@ void Matching_control::showGroupStatus(const std::vector<std::vector<std::vector
 	}
 
 	std::cout << std::endl;
+}
+
+void Matching_control::showGroupStatus(const vv_int& groups_)
+{
+	// Retrieve the number of groups
+	const int group_number = groups_.size();
+
+	// Output the layout of current graph
+	std::cout << std::endl;
+	for (int i = 0; i < group_number; i++) {
+		std::cout << "Group " << i << ": ";
+		for (int j = 0; j < groups_[i].size(); j++) {
+			std::cout << groups_[i][j] << " ";
+		}
+		std::cout << std::endl;
+	}
+	std::cout << "=================================" << std::endl;
 }
 
 void Matching_control::displayMatchings(
@@ -264,6 +335,20 @@ void Matching_control::displayMatchings(
 	else {
 		std::cout << "No matches found between the image pair (" << left_index_ << " , " << right_index_ << ")" << std::endl;
 	}
+}
+
+void Matching_control::displayImages(
+	const int		cell_size_,
+	const v_int&	ind_
+)
+{
+	const int cam_num = ind_.size();
+	std::vector<cv::Mat> cams(cam_num);
+	for (int i = 0; i < cam_num; i++) {
+		cams[i] = img_ctrl.getImageInfo(ind_[i]).getImage();
+	}
+	match.display_images(cell_size_, cams);
+	cams.clear();
 }
 
 void Matching_control::delete_bad_matchings()
@@ -555,7 +640,7 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 				break;
 			}
 
-			std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num << "% completes ..." << std::endl;
+			std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num * 100 << "% completes ..." << std::endl;
 		}
 
 		// Push the current graph into the storage
@@ -568,9 +653,9 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 	return graphs;
 }
 
-std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_validate_grouped_nodes(
+std::vector<Graph_disamb> Matching_control::constructGraph_with_grouped_nodes(
 	const bool						minimum_guided_,
-	const Eigen::MatrixXf&			origin_score_,
+	const Eigen::MatrixXf&			grouped_scores_,
 	std::vector<std::vector<int>>	grouped_nodes_
 )
 {
@@ -579,93 +664,18 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_homography_valid
 
 	const int image_num = grouped_nodes_.size();	// Retrive the number of grouped nodes in the graph
 	std::vector<int> nodes_inGraph(image_num, 0);	// Use a vector to hold the status of each node
-
-	// Construct a score matrix for the current graph configuration
-	Eigen::MatrixXf grouped_scores = construct_score_grouped_nodes_topN(minimum_guided_, origin_score_, grouped_nodes_);
-	assert(grouped_scores.rows() == image_num);
-
-	// Calculate how many nodes are in the current graph
-	int numberNodes_inGraph = std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0);
+	assert(grouped_scores_.rows() == image_num);
 
 	// Double while loop is used to construct multiple graphs in case the database is inherently not continuous
-	while (numberNodes_inGraph < image_num) {
+	while (std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) < image_num) {
 
-		// Find the first node that is not in the current graph
-		int start_node = std::find(nodes_inGraph.begin(), nodes_inGraph.end(), 0) - nodes_inGraph.begin();
-
-		// Initialize a graph for the current round
-		Graph_disamb graph(image_num);
-		std::vector<int> current_nodes;
-
-		// Add the start node into the graph
-		nodes_inGraph[start_node] = 1;
-		current_nodes.push_back(start_node);
-
-		std::vector<int> srcNode_vec;
-		std::vector<int> desNode_vec;
-		std::vector<float> score_vec;
-
-		// ===== Construct current graph =====
-		while (current_nodes.size() < image_num) {
-
-			// Clear the vectors
-			srcNode_vec.clear();
-			desNode_vec.clear();
-			score_vec.clear();
-
-			// Analyze and store links into the structure
-			for (int i = 0; i < current_nodes.size(); i++) {
-
-				const int src_node_index = current_nodes[i];
-				for (int j = 0; j < image_num; j++) {
-
-					// All informatin is defualt to be stored in the upper triangle
-					if (src_node_index == j) {
-						continue;
-					}
-					else {
-						const float score = (src_node_index < j) ? grouped_scores(src_node_index, j) : grouped_scores(j, src_node_index);
-						if (score > 0 && nodes_inGraph[j] == 0) {
-
-							score_vec.push_back(score);
-							srcNode_vec.push_back(src_node_index);
-							desNode_vec.push_back(j);
-						}
-					}
-				}
-			}
-			// End of links scanning
-
-			if (score_vec.size() > 0) {
-
-				// This part searches for the top N link candidates and return the best link
-				// TODO
-				sort_indices(score_vec, srcNode_vec, minimum_guided_);
-				sort_indices(score_vec, desNode_vec, minimum_guided_);
-
-				// TODO
-				int best_link_index = 0;
-
-				// Update the status of the new node
-				nodes_inGraph[desNode_vec[best_link_index]] = 1;
-				current_nodes.push_back(desNode_vec[best_link_index]);
-
-				// Add the link to the current graph
-				graph.addEdge(srcNode_vec[best_link_index], desNode_vec[best_link_index]);
-			}
-			else {
-				// No link can be found
-				break;
-			}
-
-			std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num << "% completes ..." << std::endl;
+		Graph_disamb graph = Utility::construct_singleGraph(minimum_guided_, grouped_scores_, nodes_inGraph);
+		if (graph.number_nodes_inGraph() <= 2) {
+			continue;
 		}
 
-		// Push  the current graph into the storage
+		// Push the current graph into the storage
 		graphs.push_back(graph);
-
-		// Update the status of all nodes
-		numberNodes_inGraph = std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0);
 	}
 	
 	return graphs;
@@ -797,7 +807,7 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_stitcher(
 				break;
 			}
 
-			// std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num << "% completes ..." << std::endl;
+			// std::cout << std::accumulate(nodes_inGraph.begin(), nodes_inGraph.end(), 0) * 1.0f / image_num * 100 << "% completes ..." << std::endl;
 
 			//std::cout << std::endl;
 			//for (int ii = 0; ii < current_nodes.size(); ii++) {
@@ -818,19 +828,27 @@ std::vector<Graph_disamb> Matching_control::constructGraph_with_stitcher(
 	return graphs;
 }
 
-std::vector<std::vector<std::vector<int>>> Matching_control::split_graph(
+vvv_int Matching_control::split_graph(
 	const bool						minimum_guided_,
 	const Eigen::MatrixXf&			origin_score_,
 	Graph_disamb&					graph_,
 	std::vector<std::vector<int>>	grouped_nodes_,
+	const int						topN_to_search_,
 	Graph_disamb*&					upper_graph_,
 	Graph_disamb*&					lower_graph_,
-	std::vector<int>&				upper_set,
-	std::vector<int>&				lower_set
+	v_int&							upper_set,
+	v_int&							lower_set
 )
 {
+	// Clear the previous data
+	upper_set.clear();
+	lower_set.clear();
+
 	// The split groups to be returned
-	std::vector<std::vector<std::vector<int>>> split_groups(2);
+	vvv_int split_groups(2);
+
+	// Retrieve the graph layout
+	const Eigen::MatrixXi graph = graph_.getLayout();
 
 	// Get number of nodes in the graph
 	const int node_num			= grouped_nodes_.size();
@@ -838,18 +856,15 @@ std::vector<std::vector<std::vector<int>>> Matching_control::split_graph(
 
 	// Shrink the indices of the original graph to the compact graph
 	int cntr = 0;
-	std::vector<int> compact_indices(node_num, -1);
+	v_int compact_indices(node_num, -1);
 	for (int i = 0; i < node_num; i++) {
 		if (graph_.get_node_status(i) == 1) {
 			compact_indices[i] = cntr++;
 		}
 	}
 
-	// Retrieve the graph layout
-	const Eigen::MatrixXi graph = graph_.getLayout();
-
 	// Construct a score matrix for the current graph configuration
-	Eigen::MatrixXf grouped_scores = construct_score_grouped_nodes_topN(minimum_guided_, origin_score_, grouped_nodes_);
+	Eigen::MatrixXf grouped_scores = construct_score_grouped_nodes_topN(minimum_guided_, topN_to_search_, origin_score_, grouped_nodes_);
 	assert(node_num == grouped_scores.rows());
 
 	// Invert the score matrix if it is minimum guided
@@ -858,7 +873,6 @@ std::vector<std::vector<std::vector<int>>> Matching_control::split_graph(
 
 		for (int i = 0; i < node_num - 1; i++) {
 			for (int j = i + 1; j < node_num; j++) {
-
 				if (grouped_scores(i, j) > 0) {
 					grouped_scores(i, j) = max_score - grouped_scores(i, j);
 				}
@@ -869,23 +883,21 @@ std::vector<std::vector<std::vector<int>>> Matching_control::split_graph(
 	// Set initial values
 	int		best_source;
 	int		best_sink;
-	float	best_score = 100000000;
+	float	best_score = std::numeric_limits<float>::max();
 
 	// ===== Find source and sink node =====
 	for (int i = 0; i < node_num - 1; i++) {
 		for (int j = i + 1; j < node_num; j++) {
-
 			if (graph_.get_node_status(i) == 1 && graph_.get_node_status(j) == 1 && grouped_scores(i, j) < best_score) {
-
 				best_source = i;
-				best_sink = j;
-				best_score = grouped_scores(i, j);
+				best_sink	= j;
+				best_score	= grouped_scores(i, j);
 			}
 		}
 	}
 
 	// Empty graph case
-	if (best_score == 100000000) {
+	if (best_score == std::numeric_limits<float>::max()) {
 		return split_groups;
 	}
 	
@@ -1136,14 +1148,18 @@ std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split_gra
 	return split_results;
 }
 
-std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
+vvv_int Matching_control::iterative_split(
 	const bool						minimum_guided_,
 	const Eigen::MatrixXf&			origin_score_,
-	std::vector<std::vector<int>>	grouped_nodes_,
+	const vv_int&					grouped_nodes_,
 	Graph_disamb&					graph_,
-	std::vector<std::vector<int>>&  split_indices
+	const int						topN_to_search_,
+	vv_int&							split_indices
 )
 {
+	// Clear the previous data
+	split_indices.clear();
+
 	// Get the number of nodes in the graph
 	const int node_num = grouped_nodes_.size();
 
@@ -1151,17 +1167,19 @@ std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
 	assert(node_num > 2);
 
 	// The final split results to be returned
-	std::vector<std::vector<std::vector<int>>> split_results;
+	vvv_int split_results;
 
 	// Initialize a index vector
-	std::vector<int> initial_indices(node_num);
+	v_int initial_indices(node_num);
 	std::iota(initial_indices.begin(), initial_indices.end(), 0);
 
 	// Initialize the to be processed groups
-	std::vector<std::vector<std::vector<int>>> to_be_processed(1);
+	v_int	upper_set;
+	v_int	lower_set;
+	vv_int	indices_vec;
+	vvv_int to_be_processed(1);
 	std::vector<Graph_disamb> graph_vec;
-	std::vector<std::vector<int>> indices_vec;
-
+	
 	to_be_processed[0] = grouped_nodes_;
 	graph_vec.push_back(graph_);
 	indices_vec.push_back(initial_indices);
@@ -1172,11 +1190,8 @@ std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
 		Graph_disamb* upper_graph;
 		Graph_disamb* lower_graph;
 
-		std::vector<int> upper_set;
-		std::vector<int> lower_set;
-
-		std::vector<std::vector<std::vector<int>>> results = split_graph(minimum_guided_, origin_score_,
-			graph_vec.back(), to_be_processed.back(), upper_graph, lower_graph, upper_set, lower_set);
+		vvv_int results = split_graph(minimum_guided_, origin_score_, graph_vec.back(),
+			to_be_processed.back(), topN_to_search_, upper_graph, lower_graph, upper_set, lower_set);
 		translate_indices(indices_vec.back(), upper_set, lower_set);
 
 		to_be_processed.pop_back();
@@ -1207,59 +1222,86 @@ std::vector<std::vector<std::vector<int>>> Matching_control::iterative_split(
 	return split_results;
 }
 
+// =================================================== //
+// This function is the main control function
+// =================================================== //
+
 void Matching_control::iterative_group_split(
-	const bool				minimum_guided_,
-	const Eigen::MatrixXf&	origin_score_
+	const bool				continued_,
+	const bool				minimum_guided_
 )
 {
 	// Copy the origin score
-	Eigen::MatrixXf origin_score_on_fly = origin_score_;
+	Eigen::MatrixXf origin_score_on_fly = match.getMatching_number_mat_float();
 
 	// Get the number of images in the database
 	const int image_num = img_ctrl.getImageNum();
-	assert(image_num == origin_score_.rows());
+	assert(image_num == origin_score_on_fly.rows());
 
-	// Initialize for the gropus
-	std::vector<std::vector<int>> groups(image_num);
-	for (int i = 0; i < image_num; i++) {
-		groups[i].push_back(i);
-	}
-
-	// Initialize the warp difference
-	std::vector<std::vector<float>> warped_diff(image_num);
-	std::vector<std::vector<int>> split_indices;
-
-	// TODO
-	while (groups.size() > 2) {
-
-		split_indices.clear();
-		std::vector<Graph_disamb> graphs = constructGraph_with_homography_validate_grouped_nodes(minimum_guided_, origin_score_on_fly, groups);
-		std::vector<std::vector<std::vector<int>>> split_results = iterative_split(minimum_guided_, origin_score_on_fly, groups, graphs[0], split_indices);
-		showGroupStatus(split_results);
-		groups = validate_add_edges(origin_score_on_fly, split_results, warped_diff, split_indices);
-
+	int				group_size;
+	vv_int			groups;
+	Graph_disamb	global_graph;
+	if (continued_) {
+		FileOperator::readGroups(log_name, groups, cams_group_id, global_graph);
+		group_size = groups.size() + 1;
+		showGroupStatus(groups);
+		system("pause");
+		
 		//for (int i = 0; i < groups.size(); i++) {
-		//	std::cout << "Group " << i << ": ";
-
-		//	for (int j = 0; j < groups[i].size(); j++) {
-		//		std::cout << groups[i][j] << "  ";
-		//	}
-
-		//	std::cout << std::endl;
-		//}
-		//std::cout << std::endl;
-
-		//for (int i = 0; i < warped_diff.size(); i++) {
-
-		//	std::cout << "Record " << i << " : ";
-		//	for (int j = 0; j < warped_diff[i].size(); j++) {
-		//		std::cout << warped_diff[i][j] << " ";
-		//	}
-		//	std::cout << std::endl;
+		//	displayImages(80, groups[i]);
 		//}
 
-		//system("pause");
 	}
+	else {
+		global_graph.setNodeNum(image_num);
+		group_size = image_num + 1;
+		groups = Utility::initGroups(image_num);
+	}
+	vv_int  split_indices1, split_indices2;
+	vvv_int split_results1, split_results2, split_results;
+
+	// Iterative cutting oscilation
+	const int p1			= TOP_MAX_PAIR;
+	const int p2			= 1;
+	const int search_radius	= 2;
+	const int bgGp_thresh	= 40;
+
+	while (groups.size() > 2 && groups.size() < group_size) {
+
+		group_size = groups.size();
+
+		// Construct a score matrix for the current graph configuration
+		Eigen::MatrixXf grouped_scores_ = construct_score_grouped_nodes_topN(minimum_guided_, p1, origin_score_on_fly, groups);
+		std::vector<Graph_disamb> graphs = constructGraph_with_grouped_nodes(minimum_guided_, grouped_scores_, groups);
+
+		for (int i = 0; i < graphs.size(); i++) {
+			std::cout << std::endl << "Processing Graph " << i << std::endl;
+			split_results1 = iterative_split(minimum_guided_, origin_score_on_fly, groups, graphs[i], p1, split_indices1);
+			split_results2 = iterative_split(minimum_guided_, origin_score_on_fly, groups, graphs[i], p2, split_indices2);
+
+			const bool osci_detected = oscilation_detector(bgGp_thresh, search_radius, split_indices1,
+				split_indices2, groups, origin_score_on_fly, global_graph, split_results);	
+			if (!osci_detected) {
+				Utility::bigGroup_bridge(bgGp_thresh, split_indices1, groups, origin_score_on_fly, split_results1, split_results);
+			}
+			
+			groups = validate_add_edges_width_SFM(bgGp_thresh, search_radius, origin_score_on_fly, split_results, global_graph);
+			showGroupStatus(groups);
+		}
+
+		FileOperator::writeGroups(log_name, groups, cams_group_id, global_graph);
+		system("pause");
+	}
+
+	// Last round
+	if (groups.size() == 2) {
+		groups = validate_last_edge_width_SFM(bgGp_thresh, search_radius, origin_score_on_fly, groups, global_graph);
+		showGroupStatus(groups);
+	}
+
+	// Write out the matches
+	write_matches_stren(global_graph);
+	//writeOut_Matchings(global_graph);
 }
 
 // ============================================================== //
@@ -1269,7 +1311,7 @@ void Matching_control::iterative_group_split(
 // number of matches. 
 // ============================================================== //
 
-std::vector<std::vector<int>> Matching_control::validate_add_edges(
+std::vector<std::vector<int>> Matching_control::validate_add_edges_with_homography(
 	Eigen::MatrixXf&							origin_score_on_fly,
 	std::vector<std::vector<std::vector<int>>>& split_results_,
 	std::vector<std::vector<float>>&			warped_diff_,
@@ -1477,6 +1519,116 @@ std::vector<std::vector<int>> Matching_control::validate_add_edges(
 	return combined_groups;
 }
 
+// BMVC
+vv_int Matching_control::validate_add_edges_width_SFM(
+	const int					bigGP_threshold,
+	const int					search_R_,
+	const Eigen::MatrixXf&		score_mat_,
+	vvv_int&					split_results_,
+	Graph_disamb&				global_graph_
+)
+{
+	const int group_num = split_results_.size();
+
+	v_int srcNode_vec;
+	v_int desNode_vec;
+	v_int machNum_vec;
+	vv_int combined_groups;
+
+	for (int i = 0; i < group_num; i++) {
+
+		// Only one group in the section
+		if (split_results_[i].size() == 1) {
+			combined_groups.push_back(split_results_[i][0]);
+		}
+		// More than one group in the section
+		else if (split_results_[i].size() == 2) {
+
+			// Find the top N pairs with the most number of matches //
+			Utility::computeMatches_betnGroups(i, score_mat_, split_results_, srcNode_vec, desNode_vec, machNum_vec);
+			std::sort(machNum_vec.begin(), machNum_vec.end(), std::greater<int>());
+
+			// TODO: Use SFM to find best link
+			int bst_link_ind = 0;
+			int bst_src = srcNode_vec[bst_link_ind];
+			int bst_dst = desNode_vec[bst_link_ind];
+
+			// If the link fails the initial test
+			{
+				const Eigen::MatrixXi layout = global_graph_.getLayout();
+
+				// ===== Harsh criteria =====
+				if ((split_results_[i][0].size() > bigGP_threshold && split_results_[i][1].size() > bigGP_threshold)
+					/*|| (split_results_[i][0].size() > 1.5 * bigGP_threshold) || (split_results_[i][1].size() > 1.5 * bigGP_threshold)*/) {
+					v_float structre_span(15);
+					v_int structure_ind(15);
+					std::iota(structure_ind.begin(), structure_ind.end(), 0);
+					for (int j = 0; j < std::min(15, (int)srcNode_vec.size()); j++) {
+						structre_span[j] = SFM_validate_Logic_simple(srcNode_vec[j], desNode_vec[j], search_R_, score_mat_, layout, false);
+						std::cout << srcNode_vec[j] << " " << desNode_vec[j] << " " << machNum_vec[j] << "  " << structre_span[j] << std::endl;
+						if (structre_span[j] >= 12) {
+							structre_span[j] = -1;
+						}
+
+						v_int disp_seq(2);
+						disp_seq[0] = srcNode_vec[j];
+						disp_seq[1] = desNode_vec[j];
+						displayImages(500, disp_seq);
+					}
+					sort_indices<float>(structre_span, structure_ind, false);
+					bst_src = srcNode_vec[structure_ind[0]];
+					bst_dst = desNode_vec[structure_ind[0]];
+					//bst_src = 107;
+					//bst_dst = 108;
+				}
+				// ==========================
+			}
+
+			// Accept the link
+			{
+				std::cout << "New Link: [" << cams_group_id[bst_src] << ", " << cams_group_id[bst_dst] << "] (" << bst_src << ", " << bst_dst << ")" << std::endl;
+				v_int disp_seq(2);
+				disp_seq[0] = bst_src;
+				disp_seq[1] = bst_dst;
+				displayImages(500, disp_seq);
+
+				v_int fusion = Utility::mergeGroups(i, split_results_); // Merge group
+				combined_groups.push_back(fusion);
+				global_graph_.addEdge(bst_src, bst_dst);				// Add edge to the global graph for output purpose
+			}
+			// Reject the link
+			{
+			}
+		}
+		else {
+			std::cout << "validate_add_edges_width_SFM: more than two sets exists in one group ..." << std::endl;
+		}
+	}
+
+	// Update the gropu id of the cameras
+	update_cam_groupID(combined_groups);
+
+	return combined_groups;
+}
+
+vv_int Matching_control::validate_last_edge_width_SFM(
+	const int					bigGP_threshold,
+	const int					search_R_,
+	const Eigen::MatrixXf&		score_mat_,
+	vv_int&						groups_,
+	Graph_disamb&				global_graph_
+)
+{
+	vvv_int groups_extended(1);
+	groups_extended[0] = groups_;
+	vv_int combined_groups = validate_add_edges_width_SFM(bigGP_threshold, search_R_, score_mat_, groups_extended, global_graph_);
+
+	// Update the gropu id of the cameras
+	update_cam_groupID(combined_groups);
+
+	return combined_groups;
+}
+
 Eigen::MatrixXf Matching_control::construct_score_grouped_nodes(
 	const Eigen::MatrixXf&			origin_score_,
 	std::vector<std::vector<int>>&	grouped_nodes_
@@ -1520,44 +1672,41 @@ Eigen::MatrixXf Matching_control::construct_score_grouped_nodes(
 
 Eigen::MatrixXf Matching_control::construct_score_grouped_nodes_topN(
 	const bool						minimum_guided_,
+	const int						topN_to_search_,
 	const Eigen::MatrixXf&			origin_score_,
 	std::vector<std::vector<int>>&	grouped_nodes_
 )
 {
 	// Note, only upper triangle is used
-	const int group_number = grouped_nodes_.size();
-	Eigen::MatrixXf new_score = Eigen::MatrixXf::Ones(group_number, group_number) * -1;
+	const int group_number		= grouped_nodes_.size();
+	Eigen::MatrixXf new_score	= Eigen::MatrixXf::Ones(group_number, group_number) * -1;
+	v_float score_record;
 
 	for (int i = 0; i < group_number - 1; i++) {
 		for (int j = i + 1; j < group_number; j++) {
+			score_record.clear();
 
-			std::vector<float> score_record;
 			for (int ii = 0; ii < grouped_nodes_[i].size(); ii++) {
+				int left_index = grouped_nodes_[i][ii];
+
 				for (int jj = 0; jj < grouped_nodes_[j].size(); jj++) {
 
-					int left_index  = grouped_nodes_[i][ii];
 					int right_index = grouped_nodes_[j][jj];
 					assert(left_index != right_index);
-
-					if (left_index > right_index) {
-						int swap_tmp	= left_index;
-						left_index		= right_index;
-						right_index		= swap_tmp;
-					}
-
-					score_record.push_back(origin_score_(left_index, right_index));
+					score_record.push_back(origin_score_(std::min(left_index, right_index), std::max(left_index, right_index)));
 				}
 			}
 
 			// Only top N strongest pairs are used for score computation
 			sort_indices(score_record, minimum_guided_);
+			std::sort(score_record.begin(), score_record.end(), std::greater<float>());
 
 			// Metric one: average over the top N strongest scores
-			int search_limit = (score_record.size() >= TOP_MAX_PAIR) ? TOP_MAX_PAIR : score_record.size();
-			float avg_score = std::accumulate(score_record.begin(), score_record.begin() + search_limit, 0) / search_limit;
+			int search_limit = (score_record.size() >= topN_to_search_) ? topN_to_search_ : score_record.size();
+			float accumu_score = std::accumulate(score_record.begin(), score_record.begin() + search_limit, 0);
 
 			// Set the new score matrix
-			new_score(i, j) = avg_score;
+			new_score(i, j) = accumu_score;
 		}
 	}
 
@@ -1654,7 +1803,11 @@ void Matching_control::set_vsfm_path(const std::string path_)
 	vsfm_exec = path_ + "/visualSFM";
 }
 
-void Matching_control::triangulate_VSFM(const std::vector<int>& setA, const std::vector<int>& setB)
+void Matching_control::triangulate_VSFM(
+	const std::vector<int>& setA,
+	const std::vector<int>& setB,
+	const bool interrupted
+)
 {
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// the models should be constructed for each sub-group
@@ -1668,65 +1821,1058 @@ void Matching_control::triangulate_VSFM(const std::vector<int>& setA, const std:
 		std::cout << "triangulate_VSFM: incorrect triangulate sequence ..." << std::endl;
 	}
 
-	std::string tmp_matches_name("tmp_matches.txt");
-	std::vector<cv::Point2i> linkages = linkage_selection(setA, setB);
-	std::string tmp_matches_path = write_matches_designated(tmp_matches_name, linkages);
-
-	// Decide if an nvm already exists, use different command call in different cases
-	std::string path;
-	std::string name;
-	Image_info::splitFilename(image_list_path, path, name);
-	std::string nvm_path = path + "/o.nvm";
-	if (!boost::filesystem::exists(nvm_path.c_str())) {
-		std::string cmd = vsfm_exec + " sfm+import " + path + " " + nvm_path + " " + tmp_matches_path;
-		system(cmd.c_str());
+	if (!linkage_selection(setA, setB, interrupted)) {
+		std::cout << "Splitting models" << std::endl;
 	}
-	else {
-		std::string cmd = vsfm_exec + " sfm+import+resume " + nvm_path + " " + path + "/o_tmp.nvm " + tmp_matches_path;
-		system(cmd.c_str());
-
-		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-		// Pass the linkage validation here, then make the temporary
-		// structure official
-		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-		// Delete all original nvm file
-		boost::filesystem::path delete_nvm(nvm_path.c_str());
-		boost::filesystem::remove(delete_nvm);
-
-		// Rename the tmp nvm file as nvm file
-		boost::filesystem::path rename_nvm(std::string(path + "/o_tmp.nvm").c_str());
-		boost::filesystem::rename(rename_nvm, delete_nvm);
-	}
-	
-	
-	boost::filesystem::path delete_matches(tmp_matches_path.c_str());
-	boost::filesystem::remove(delete_matches);
 }
 
-std::vector<cv::Point2i> Matching_control::linkage_selection(const std::vector<int>& setA, const std::vector<int>& setB)
+bool Matching_control::linkage_selection(
+	const std::vector<int>& setA,
+	const std::vector<int>& setB,
+	const bool interrupted)
 {
 	const int sizeA = setA.size();
 	const int sizeB = setB.size();
 
 	if (sizeA <= 0 || sizeB <= 0) {
 		std::cout << "linkage_selection: incorrect triangulate sequence ..." << std::endl;
+		return false;
+	}
+
+	// ===== Choose the best link =======
+	std::vector<CameraT>		cams_;
+	std::vector<int>			cam_index_;
+	std::vector<Point3D>		pt3d_;
+	std::vector<cv::Point2i>	linkages;
+
+	// Decide if an nvm already exists, use different command call in different cases
+	std::string nvm_path     = direc + "/o.nvm";
+	std::string nvm_path_tmp = direc + "/o_tmp.nvm";
+	std::string tmp_matches_name("tmp_matches.txt");
+	std::string sel_matches_name("selected_matches.txt");
+	std::string first_time_token = direc + "/" + sel_matches_name;
+
+	if (interrupted) {
+		viewer.readIn_NVM(nvm_path, cams_, cam_index_, pt3d_);
+		commit_cams(cams_, cam_index_, pt3d_, 1);
+	}
+
+	if (!boost::filesystem::exists(first_time_token.c_str())) {
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		// Temporary implementation: choose the first pair
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		linkages.push_back(cv::Point2i(0, 1));
+		call_VSFM(linkages, sel_matches_name, nvm_path, true, false);
+
+		viewer.readIn_NVM(direc + "/o.nvm", cams_, cam_index_, pt3d_);
+		viewer.show_pointCloud(pt3d_, cams_, cam_index_, setA, setB);
+		commit_cams(cams_, cam_index_, pt3d_, 1);
+	}
+	else {
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		// Temporary implementation: Add only one camera
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		const int			K = 3;
+		// float			max_volume  = -1;
+		cv::Point2i			best_linkages(-1, -1);
+		std::vector<int>	compared_cam_rec(image_num, 0);
+
+		// Setup the base volume
+		//float base_volume = -1;
+		//std::vector<int> base_cam_ind;
+		//std::vector<CameraT> base_cam;
+		//base_cam_ind.reserve(sizeA);
+		//base_cam.reserve(sizeA);
+		//if (sizeA >= 4) {
+		//	for (int i = 0; i < image_num; i++) {
+		//		if (cams_group_id[i] == 1) {
+		//			base_cam.push_back(cams[i]);
+		//			base_cam_ind.push_back(i);
+		//		}
+		//	}
+		//	base_volume = convhull_volume(base_cam);
+		//	assert(base_cam.size() == sizeA);
+		//}
+
+		// Start searching for the best link
+		for (int i = 0; i < sizeA; i++) {
+			const int setA_cam_ind = setA[i];
+			if (compared_cam_rec[setA_cam_ind] == 0) {
+
+				int cam_nearest = find_closestCam(setA_cam_ind, 1);
+				compared_cam_rec[setA_cam_ind]  = 1;
+
+				linkages.push_back(cv::Point2i(setA_cam_ind, setB[0]));
+				linkages.push_back(cv::Point2i(cam_nearest, setB[0]));
+				call_VSFM(linkages, tmp_matches_name, nvm_path, false, true, std::string(""), nvm_path_tmp);
+
+				viewer.readIn_NVM(nvm_path_tmp, cams_, cam_index_, pt3d_);
+				//viewer.show_pointCloud(pt3d_, cams_, cam_index_, setA, setB);
+				FileOperator::deleteFile(nvm_path_tmp);
+				delete_MAT(setB[0]);
+
+				// =====================================================
+				// Linkage selection scheme
+				// =====================================================
+				
+
+				// ==================================================
+				// Trial: nearest cameras should have the most matches
+				// ==================================================
+				std::vector<int> setA_copy = setA;
+				std::vector<int> setB_copy = setB;
+				std::vector<CameraT> old_cams;
+				std::vector<CameraT> new_cams;
+				if (!viewer.resolve_cameras(cams_, cam_index_, setA_copy, setB_copy, old_cams, new_cams)) {
+					continue;
+				}
+				find_closestCam(new_cams[0], old_cams, setA_copy);
+
+				std::vector<int> matches_num_seq(sizeA);
+				for (int j = 0; j < sizeA; j++) {
+					matches_num_seq[j] = getMatch_number(setA[j], setB[0]);
+				}
+				std::sort(matches_num_seq.begin(), matches_num_seq.end(), std::greater<int>());
+				int nearest_matches	= 0;
+				int most_matches	= 0;
+				for (int j = 0; j < std::min(sizeA, K); j++) {
+					nearest_matches += getMatch_number(setA_copy[j], setB_copy[0]);
+					most_matches += matches_num_seq[j];
+				}
+
+				if (nearest_matches > 0.8 * most_matches) {
+					best_linkages = cv::Point2i(setA_copy[0], setA_copy[1]);
+					break;
+				}
+				else {
+					std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
+					std::cout << "Pair <" << setA_cam_ind << "," << setB[0] << "> added ..." << std::endl;
+					std::cout << "Pair <" << cam_nearest << "," << setB[0] << "> added ..." << std::endl;
+					std::cout << "Most matches: " << most_matches << "  " << "Nearest matches: " << nearest_matches << std::endl;
+
+					//for (int j = 0; j < std::min(sizeA, K); j++) {
+					//	std::cout << "nearest cam is : " << setA_copy[j] << std::endl;						
+					//}
+					//for (int j = 0; j < std::min(sizeA, K); j++) {
+					//	std::cout << "most matches are : " << matches_num_seq[j] << std::endl;
+					//}
+				}
+
+
+				// ==================================================
+				// Trial: Calculate the camera positions volume
+				// ==================================================
+				//float adjusted_volume;
+				//float new_base_volume;
+				//float current_volume = convhull_volume(cams_);
+				//if (base_volume > 0.0f) {
+				//	std::vector<CameraT> new_base_cam(sizeA);
+				//	for (int j = 0; j < sizeA; j++) {
+				//		const int base_ind = std::find(cam_index_.begin(), cam_index_.end(), base_cam_ind[j]) - cam_index_.begin();
+				//		new_base_cam[j] = cams_[base_ind];
+				//	}
+				//	new_base_volume = convhull_volume(new_base_cam);
+				//	adjusted_volume = current_volume / (new_base_volume / base_volume);
+				//}
+				//else {
+				//	adjusted_volume = current_volume;
+				//}
+				//
+				//if (adjusted_volume > max_volume || sizeA == 2) {
+				//	max_volume = adjusted_volume;
+				//	best_linkages = cv::Point2i(setA_cam_ind, cam_nearest);
+				//}
+				// ==================================================
+
+				// ==================================================
+				// Trial: calculate the distance, matches score
+				// ==================================================
+				//int cntr_test = 0;
+				//std::vector<CameraT> tt1(sizeA);
+				//for (int j = 0; j < sizeA; j++) {
+				//	const int ind_t = std::find(cam_index_.begin(), cam_index_.end(), setA[j]) - cam_index_.begin();
+				//	tt1[j] = cams_[ind_t];
+				//}
+				//float score_test = 0.0f;
+				//for (int j = 0; j < sizeA - 1; j++) {
+				//	for (int k = j + 1; k < sizeA; k++) {
+				//		score_test += getMatch_number(setA[j], setA[k]) * compute_cam_dis(tt1[j], tt1[k]);
+				//		cntr_test++;
+				//	}
+				//}
+				//score_test /= cntr_test;
+				//cntr_test = 0;
+				//float score_test_total = 0.0f;
+				//for (int j = 0; j < cams_.size() - 1; j++) {
+				//	for (int k = j + 1; k < cams_.size(); k++) {
+				//		score_test_total += getMatch_number(cam_index_[j], cam_index_[k]) * compute_cam_dis(cams_[j], cams_[k]);
+				//		cntr_test++;
+				//	}
+				//}
+				//score_test_total /= cntr_test;
+				// ==================================================
+
+
+				//std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
+				//std::cout << "Pair <" << setA_cam_ind << "," << setB[0] << "> added ..." << std::endl;
+				//std::cout << "Pair <" << cam_nearest << "," << setB[0] << "> added ..." << std::endl;
+				//std::cout << "Adjusted volume is: " << adjusted_volume << std::endl;
+				//std::cout << "!!!! Score are: " << score_test << "<-> " << score_test_total << std::endl;
+				system("pause");
+			}
+		}
+
+		//if (max_volume == -1 && sizeA >= 3) {
+		//	std::cout << "Failed to find expand current models ..." << std::endl;
+		//	exit(1);
+		//}
+
+		std::cout << "##############################" << std::endl;
+		std::cout << "Pair <" << best_linkages.x << "," << setB[0] << "> added ..." << std::endl;
+		std::cout << "Pair <" << best_linkages.y << "," << setB[0] << "> added ..." << std::endl;
+		system("pause");
+
+		//delete_MAT(setA);
+		linkages.push_back(cv::Point2i(best_linkages.x, setB[0]));
+		linkages.push_back(cv::Point2i(best_linkages.y, setB[0]));
+		//write_matches_designated("selected_matches.txt", linkages);
+		call_VSFM(linkages, sel_matches_name, nvm_path, true, false);
+		//write_matches_designated(sel_matches_name, linkages);
+		//call_VSFM(linkages, tmp_matches_name, nvm_path, false, true, std::string(""), nvm_path);
+
+		viewer.readIn_NVM(nvm_path, cams_, cam_index_, pt3d_);
+		viewer.show_pointCloud(pt3d_, cams_, cam_index_, setA, setB);
+		commit_cams(cams_, cam_index_, pt3d_, 1);
+
+		//FileOperator::deleteFile(nvm_path);
+		//FileOperator::renameFile(nvm_path_tmp, nvm_path);
+	}
+
+	return true;
+}
+
+void Matching_control::dummy_control()
+{
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	// Should be done by the grouping function
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+	int inlier_cam_num = 1;
+	std::vector<int> setA(inlier_cam_num);
+	std::vector<int> setB;
+	std::iota(std::begin(setA), std::end(setA), 0);
+	for (int i = inlier_cam_num; i < image_num; i++) {
+		setB.push_back(i);
+		triangulate_VSFM(setA, setB, false);
+		setA.push_back(i);
+		setB.clear();
+	}
+}
+
+int Matching_control::find_closestCam(int index_, int group_id_)
+{
+	int   min_ind = -1;
+	float min_dis = std::numeric_limits<float>::max();
+
+	for (int i = 0; i < image_num; i++) {
+		if (cams_group_id[i] == group_id_ && i != index_) {
+			float dis = compute_cam_dis(cams[i], cams[index_]);
+			if (dis < min_dis) {
+				min_dis = dis;
+				min_ind = i;
+			}
+		}
+	}
+	
+	if (min_ind == -1) {
+		std::cout << "find_closestCam: cannot find closest camera position ..." << std::endl;
+		exit(1);
+	}
+
+	return min_ind;
+}
+
+void Matching_control::find_closestCam(
+	CameraT&				tar_cam_,
+	std::vector<CameraT>&	cams_,
+	int&					closest_ind_,
+	float&					closest_dis_
+)
+{
+	closest_ind_	= -1;
+	closest_dis_	= std::numeric_limits<float>::max();
+	const int num	= cams_.size();
+
+	for (int i = 0; i < num; i++) {
+		float dis = compute_cam_dis(tar_cam_, cams_[i]);
+		if (dis < closest_dis_) {
+			closest_dis_ = dis;
+			closest_ind_ = i;
+		}
+	}
+
+	if (closest_ind_ == -1) {
+		std::cout << "find_closestCam: cannot find closest camera position ..." << std::endl;
+		exit(1);
+	}
+}
+
+void Matching_control::find_closestCam(
+	CameraT&				tar_cam_,
+	std::vector<CameraT>&	cams_,
+	std::vector<int>&		index_
+)
+{
+	const int cam_num = cams_.size();
+	std::vector<float> dis(cam_num);
+
+	for (int i = 0; i < cam_num; i++) {
+		dis[i] = compute_cam_dis(tar_cam_, cams_[i]);
+	}
+	sort_indices<float>(dis, index_, true);
+}
+
+void Matching_control::find_closestCam_interGP(
+	const int	t_,
+	v_int&		ind_
+)
+{
+	v_float dis;
+	ind_.clear();
+	const int gp_id = cams_group_id[t_];
+
+	for (int i = 0; i < image_num; i++) {
+		if (cams_group_id[i] != gp_id || i == t_) {
+			continue;
+		}
+		dis.push_back(compute_cam_dis(cams[t_], cams[i]));
+		ind_.push_back(i);
+	}
+	sort_indices<float>(dis, ind_, true);
+}
+
+void Matching_control::compute_camDisVec(
+	std::vector<CameraT>		cams_,
+	v_float&					cam_dis_
+)
+{
+	int cntr = 0;
+	const int num = cams_.size();
+	cam_dis_.clear();
+	cam_dis_.resize(num * (num - 1) / 2);
+
+	for (int i = 0; i < num - 1; i++) {
+		for (int j = i + 1; j < num; j++) {
+			cam_dis_[cntr++] = compute_cam_dis(cams_[i], cams_[j]);
+		}
+	}
+	std::sort(cam_dis_.begin(), cam_dis_.end(), std::greater<float>());
+}
+
+float Matching_control::compute_cam_dis(CameraT& l_, CameraT& r_) {
+	float T1[3];
+	float T2[3];
+
+	l_.GetCameraCenter(T1);
+	r_.GetCameraCenter(T2);
+
+	return 
+		(T1[0] - T2[0]) * (T1[0] - T2[0]) +
+		(T1[1] - T2[1]) * (T1[1] - T2[1]) +
+		(T1[2] - T2[2]) * (T1[2] - T2[2]);
+}
+
+void Matching_control::commit_cams(
+	const std::vector<CameraT>&		cams_,
+	const std::vector<int>&			cams_ind_,
+	std::vector<Point3D>			pt3d_,
+	const int						group_id_
+)
+{
+	const int added_cam_num = cams_ind_.size();
+
+	for (int i = 0; i < added_cam_num; i++) {
+		cams[cams_ind_[i]] = cams_[i];
+		cams_group_id[cams_ind_[i]] = group_id_;
+	}
+
+	if (pt3d.size() < group_id_) {
+		pt3d.push_back(pt3d_);
+	}
+	else {
+		pt3d[group_id_ - 1] = pt3d_;
+	}
+}
+
+void Matching_control::commit_cams_without_pt3d(
+	const std::vector<CameraT>&		cams_,
+	const std::vector<int>&			cams_ind_,
+	const int						group_id_
+)
+{
+	const int added_cam_num = cams_ind_.size();
+
+	for (int i = 0; i < added_cam_num; i++) {
+		cams[cams_ind_[i]] = cams_[i];
+		cams_group_id[cams_ind_[i]] = group_id_;
+	}
+}
+
+bool Matching_control::call_VSFM(
+	std::vector<cv::Point2i>&	linkages_,
+	const std::string&			match_name_,
+	const std::string&			nvm_path_,
+	bool						save_matches_file,
+	bool						resume,
+	const std::string&			original_file,
+	const std::string&			tmp_nvm_path_
+)
+{
+	bool list_written = false;
+	std::string cmd;
+	std::string tmp_matches_path;
+	std::string tmp_imglist_path = std::string("tmp_list.txt");
+	std::string compose_imglist = direc + "/" + tmp_imglist_path;
+
+	// If save matching file, copy the original file and rename it as a temporary file
+	if (!save_matches_file && !resume && original_file != std::string("")) {
+		cmd = "xcopy " + direc + "/" + original_file + " " + direc + "/" + match_name_ + "*";
+		std::replace(cmd.begin(), cmd.end(), '/', '\\');
+		system_no_output(cmd.c_str());
+	}
+
+	tmp_matches_path = write_matches_designated(match_name_, linkages_);
+
+	// If resume, load in the original nvm file and add more triangulated points to it
+	if (!resume) {
+		list_written = true;
+		write_list(tmp_imglist_path, linkages_);
+		cmd = vsfm_exec + " sfm+import " + compose_imglist + " " + nvm_path_ + " " + tmp_matches_path;
+	}
+	else {
+		cmd = vsfm_exec + " sfm+import+resume " + nvm_path_ + " " + tmp_nvm_path_ + " " + tmp_matches_path;
+	}
+
+#ifdef NO_VSFM_VERBO
+	system_no_output(cmd.c_str());
+#else
+	system(cmd.c_str());
+#endif // NO_VSFM_VERBO
+
+	linkages_.clear();
+	if (!save_matches_file) {
+		FileOperator::deleteFile(tmp_matches_path);
+	}
+	if (list_written) {
+		FileOperator::deleteFile(compose_imglist);
+	}
+
+	return true;
+}
+
+float Matching_control::convhull_volume(std::vector<CameraT>& cams_)
+{
+	const int cam_num = cams_.size();
+	if (cam_num < 4) {
+		return -1.0f;
+	}
+
+	double *x = new double[cam_num];
+	double *y = new double[cam_num];
+	double *z = new double[cam_num];
+	double *r;
+	float res;
+
+	float T[3];
+	for (int i = 0; i < cam_num; i++) {
+		cams_[i].GetCameraCenter(T);
+		x[i] = (double)T[0];
+		y[i] = (double)T[1];
+		z[i] = (double)T[2];
+	}
+
+	// Declare MatLAB engine and arrays
+	mxArray *X = NULL;
+	mxArray *Y = NULL;
+	mxArray *Z = NULL;
+	mxArray *R = NULL;
+
+	X = mxCreateDoubleMatrix(cam_num, 1, mxREAL);
+	Y = mxCreateDoubleMatrix(cam_num, 1, mxREAL);
+	Z = mxCreateDoubleMatrix(cam_num, 1, mxREAL);
+
+	std::memcpy((void*)mxGetPr(X), (void*)x, sizeof(double) * cam_num);
+	std::memcpy((void*)mxGetPr(Y), (void*)y, sizeof(double) * cam_num);
+	std::memcpy((void*)mxGetPr(Z), (void*)z, sizeof(double) * cam_num);
+
+	engEvalString(ep, "clear all;");
+	engPutVariable(ep, "X", X);
+	engPutVariable(ep, "Y", Y);
+	engPutVariable(ep, "Z", Z);
+
+	engEvalString(ep, "[TriIdx, V] = convhull(X, Y, Z);");
+	R = engGetVariable(ep, "V");
+	r = mxGetPr(R);
+	res = (float)r[0];
+
+	mxDestroyArray(X);
+	mxDestroyArray(Y);
+	mxDestroyArray(Z);
+	mxDestroyArray(R);
+
+	delete x;
+	delete y;
+	delete z;
+
+	return res;
+}
+
+float Matching_control::convhull_volume(std::vector<Point3D>& pt3d_)
+{
+	const int pt_num = pt3d_.size();
+	if (pt_num < 4) {
+		return -1.0f;
+	}
+
+	double *x = new double[pt_num];
+	double *y = new double[pt_num];
+	double *z = new double[pt_num];
+	double *r;
+	float res;
+
+	for (int i = 0; i < pt_num; i++) {
+		x[i] = (double)pt3d_[i].xyz[0];
+		y[i] = (double)pt3d_[i].xyz[1];
+		z[i] = (double)pt3d_[i].xyz[2];
+	}
+
+	// Declare MatLAB engine and arrays
+	mxArray *X = NULL;
+	mxArray *Y = NULL;
+	mxArray *Z = NULL;
+	mxArray *R = NULL;
+
+	X = mxCreateDoubleMatrix(pt_num, 1, mxREAL);
+	Y = mxCreateDoubleMatrix(pt_num, 1, mxREAL);
+	Z = mxCreateDoubleMatrix(pt_num, 1, mxREAL);
+
+	std::memcpy((void*)mxGetPr(X), (void*)x, sizeof(double) * pt_num);
+	std::memcpy((void*)mxGetPr(Y), (void*)y, sizeof(double) * pt_num);
+	std::memcpy((void*)mxGetPr(Z), (void*)z, sizeof(double) * pt_num);
+
+	engEvalString(ep, "clear all;");
+	engPutVariable(ep, "X", X);
+	engPutVariable(ep, "Y", Y);
+	engPutVariable(ep, "Z", Z);
+
+	engEvalString(ep, "[TriIdx, V] = convhull(X, Y, Z);");
+	R = engGetVariable(ep, "V");
+	r = mxGetPr(R);
+	res = (float)r[0];
+
+	mxDestroyArray(X);
+	mxDestroyArray(Y);
+	mxDestroyArray(Z);
+	mxDestroyArray(R);
+
+	delete x;
+	delete y;
+	delete z;
+
+	return res;
+}
+
+void Matching_control::readIn_NVM(std::string nvm_path)
+{
+	std::vector<CameraT>		cams_;
+	std::vector<int>			cam_index_;
+	std::vector<Point3D>		pt3d_;
+
+	viewer.readIn_NVM(nvm_path, cams_, cam_index_, pt3d_);
+	viewer.show_pointCloud(pt3d_, cams_);
+
+	// float current_volume = convhull_volume(cams_);
+	// std::cout << "Adjusted volume is: " << current_volume << std::endl;
+}
+
+void Matching_control::delete_MAT(int index_)
+{
+	FileOperator::deleteFile(match.get_MAT_name(index_));
+}
+
+void Matching_control::delete_MAT(const std::vector<int>& index_)
+{
+	const int num = index_.size();
+	for (int i = 0; i < num; i++) {
+		delete_MAT(index_[i]);
+	}
+}
+
+void Matching_control::update_cam_groupID(
+	const vv_int&	new_groups_
+)
+{
+	const int num = new_groups_.size();
+	for (int i = 0; i < num; i++) {
+		for (int j = 0; j < new_groups_[i].size(); j++) {
+			cams_group_id[new_groups_[i][j]] = i;
+		}
+	}
+}
+
+void Matching_control::groupModel_generate(
+	const std::string		nvm_name,
+	const v_int&			group_,
+	Graph_disamb&			global_graph_,
+	std::vector<CameraT>&	cams_,
+	std::vector<int>&		cam_index_,
+	const bool				display
+)
+{
+	const int num = group_.size();
+	if (num < 2) {
+		std::cout << "groupModel_generate: need to have at least 2 cams to construct ..." << std::endl;
+		exit(1);
 	}
 
 	std::vector<cv::Point2i> linkages;
+	const Eigen::MatrixXi layout = global_graph_.getLayout();
 
-	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	// ===== Linkages selection scheme =====
-	// !!!!! Dummy implementation !!!!!
-	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	for (int i = 0; i < sizeA; i++) {
-		for (int j = 0; j < sizeB; j++) {
-			const int mach_num = match.get_matching_number(setA[i], setB[j]);
-			if (mach_num > 0) {
-				linkages.push_back(cv::Point2i(std::min(setA[i], setB[j]), std::max(setA[i], setB[j])));
+	// Retrive the matches
+	for (int i = 0; i < num - 1; i++) {
+		for (int j = i + 1; j < num; j++) {
+			const int& id1 = group_[i];
+			const int& id2 = group_[j];
+			if (layout(std::min(id1, id2), std::max(id1, id2)) == 1) {
+				linkages.push_back(cv::Point2i(std::min(id1, id2), std::max(id1, id2)));
 			}
 		}
 	}
 
-	return linkages;
+	cams_.clear();
+	cam_index_.clear();
+	std::vector<Point3D> pt3d_;
+	v_int unique_match_list;
+	Utility::generateUniqueImageList(linkages, unique_match_list);
+
+	// Call VSFM to do the re-construction
+	call_VSFM(linkages, mach_name, nvm_name, false, false);
+
+	// Read in the generated NVM file and commit cameras
+	viewer.readIn_NVM(nvm_name, cams_, cam_index_, pt3d_);
+	commit_cams_without_pt3d(cams_, cam_index_, cams_group_id[group_[0]]);
+
+	// Delete all the MAT files generated by VSFM
+	assert(cams_.size() == num);
+	delete_MAT(unique_match_list);
+	FileOperator::deleteFile(nvm_name);
+
+	if (display) {
+		viewer.show_pointCloud(std::vector<Point3D>(), cams_, cam_index_, group_, v_int(), false);
+	}
+}
+
+// ==============================================
+// This function is obsolete for now. It intially
+// attempts to merge the full side models with the
+// central model. But I fail to do that in a short
+// time.
+// ==============================================
+void Matching_control::fusionModel_generate(
+	const vv_int&			splits_,
+	Graph_disamb&			global_graph_,
+	const cv::Point2i		link_,
+	const bool				display_
+)
+{
+	const int left_num = splits_[0].size();
+	const int rigt_num = splits_[1].size();
+
+	// TODO
+	if (left_num < 2 || rigt_num < 2) {
+		return;
+	}
+
+	// Generate two single models
+	std::vector<CameraT> cams_l;
+	std::vector<CameraT> cams_r;
+	std::vector<int> cams_l_ind;
+	std::vector<int> cams_r_ind;
+	groupModel_generate(nvm_name_fst, splits_[0], global_graph_, cams_l, cams_l_ind, display_);
+	groupModel_generate(nvm_name_sec, splits_[1], global_graph_, cams_r, cams_r_ind, display_);
+
+	// Generate link model
+	std::vector<CameraT>		cams_;
+	std::vector<int>			cam_index_;
+	std::vector<Point3D>		pt3d_;
+
+	std::vector<cv::Point2i> linkages(1);
+	linkages[0] = link_;
+
+	call_VSFM(linkages, mach_name, nvm_name_union, false, false);
+	viewer.readIn_NVM(nvm_name_union, cams_, cam_index_, pt3d_);
+
+	assert(cams_.size() == 2);
+	delete_MAT(cam_index_);
+	FileOperator::deleteFile(nvm_name_union);
+
+	if (display_) {
+		viewer.show_pointCloud(std::vector<Point3D>(), cams_, cam_index_, cam_index_, v_int(), false);
+	}
+
+	// Translate the two models with respect to the central model
+	const int l_ind = (std::find(splits_[0].begin(), splits_[0].end(), cam_index_[0]) != splits_[0].end()) ? 0 : 1;
+	const int r_ind = (l_ind == 0) ? 1 : 0;
+
+	CameraT cam_l;
+	CameraT cam_r;
+	std::vector<CameraT> cam_l_nonE;
+	std::vector<CameraT> cam_r_nonE;
+	CameraT cam_l_C = cams_[l_ind];
+	CameraT cam_r_C = cams_[r_ind];
+	viewer.resolve_cameras(cam_index_[l_ind], cams_l_ind, cams_l, cam_l, cam_l_nonE);
+	viewer.resolve_cameras(cam_index_[r_ind], cams_r_ind, cams_r, cam_r, cam_r_nonE);
+
+	//cv::Mat T_l_C;
+	//cv::Mat R_l_C;
+	//cv::Mat T_r_C;
+	//cv::Mat R_r_C;
+	//cv::Mat T_l;
+	//cv::Mat R_l;
+	//cv::Mat T_r;
+	//cv::Mat R_r;
+	//Utility::retrieveCamTR(cam_l, T_l, R_l);
+	//Utility::retrieveCamTR(cam_r, T_r, R_r);
+	//Utility::retrieveCamTR(cam_l_C, T_l_C, R_l_C);
+	//Utility::retrieveCamTR(cam_r_C, T_r_C, R_r_C);
+
+	//cv::Mat P_l;
+	//cv::Mat P_l_C;
+	//cv::Mat P_r_C;
+	//Utility::retrieveCamP(cam_l, P_l);
+	//Utility::retrieveCamP(cam_l_C, P_l_C);
+	//Utility::retrieveCamP(cam_r_C, P_r_C);
+	//cv::Mat trans = P_l_C.inv() * P_l;
+	//cv::Mat P_r_C_trans = P_r_C * trans;
+	//cv::Mat P_r_C_R = Utility::retrieveR(P_r_C_trans);
+	//cv::Mat P_r_C_T = Utility::retrieveT(P_r_C_trans);
+	//CameraT cam_r_C_trans;
+	//cam_r_C_trans.SetFocalLength(cam_r_C.GetFocalLength());
+	//cam_r_C_trans.SetMatrixRotation(P_r_C_R.data);
+	//cam_r_C_trans.SetTranslation(P_r_C_T.data);
+
+
+	//cam_l_nonE.push_back(cam_l);
+	//cam_l_nonE.push_back(cam_r_C_trans);
+	//viewer.show_pointCloud(std::vector<Point3D>(), cam_l_nonE, std::vector<int>(), std::vector<int>(), v_int(), false);
+}
+
+cv::Point2i Matching_control::SFM_validate_Logic(
+	const vv_int&			splits_,
+	Graph_disamb&			global_graph_,
+	const int				search_radius_,
+	const v_int&			src_,
+	const v_int&			des_,
+	const bool				display_group_,
+	const bool				display_merge_
+)
+{
+	// src_ and des_ are ordered in decreasing order of matches
+	const int left_num  = splits_[0].size();
+	const int rigt_num  = splits_[1].size();
+	const int cadi_num  = src_.size();
+	const int gpL_index = cams_group_id[src_[0]];
+	const int gpR_index = cams_group_id[des_[0]];
+	assert(cadi_num == des_.size());
+
+	if (left_num < 2 || rigt_num < 2) {
+		return cv::Point2i(-1, -1);
+	}
+
+	v_int cam_index_;
+	std::vector<CameraT> cams_;
+	std::vector<Point3D> pt3d_;
+
+	std::cout << "Group " << gpL_index << ", " << gpR_index << " : suspicious link ..." << std::endl;
+	groupModel_generate(nvm_name_fst, splits_[0], global_graph_, cams_, cam_index_, display_group_);
+	groupModel_generate(nvm_name_sec, splits_[1], global_graph_, cams_, cam_index_, display_group_);
+
+	int   i;
+	int   cam_num;
+	float cam_dis;
+	v_int l_ind;
+	v_int r_ind;
+	v_int unique_match_list;
+	std::vector<cv::Point2i> linkages;
+	const Eigen::MatrixXi layout = global_graph_.getLayout();
+
+	// Loop through the candidate links
+	for (i = 0; i < cadi_num; i++) {
+		const int src_ind = src_[i];
+		const int des_ind = des_[i];
+		find_closestCam_interGP(src_ind, l_ind);
+		find_closestCam_interGP(des_ind, r_ind);
+
+		// Retrive the matches
+		linkages.clear();
+		Utility::constructLinks_interGP(src_ind, l_ind, layout, search_radius_, linkages);
+		Utility::constructLinks_interGP(des_ind, r_ind, layout, search_radius_, linkages);
+		linkages.push_back(cv::Point2i(std::min(src_ind, des_ind), std::max(src_ind, des_ind)));
+		Utility::generateUniqueImageList(linkages, unique_match_list);
+
+		call_VSFM(linkages, mach_name, nvm_name_union, false, false);
+		viewer.readIn_NVM(nvm_name_union, cams_, cam_index_, pt3d_);
+		delete_MAT(unique_match_list);
+		FileOperator::deleteFile(nvm_name_union);
+		if (display_merge_) {
+			viewer.show_pointCloud(pt3d_, cams_, cam_index_, cam_index_, v_int(), true);
+		}
+
+		// Reason about the results and accept the link if it is validate
+		// TODO
+		cam_dis = 0.0;
+		cam_num = cams_.size();
+		std::vector<float> tmp;
+		for (int j = 0; j < cam_num - 1; j++) {
+			for (int k = j + 1; k < cam_num; k++) {
+				tmp.push_back(compute_cam_dis(cams_[j], cams_[k]));
+			}
+		}
+		std::sort(tmp.begin(), tmp.end(), std::greater<float>());
+		std::cout << "Max Cam distance: " << tmp[0] << std::endl;
+
+		break;
+	}
+
+	// Return the validate link
+	if (i >= cadi_num) {
+		return cv::Point2i(-1, -1);
+	}
+	else {
+		return cv::Point2i(std::min(src_[i], des_[i]), std::max(src_[i], des_[i]));
+	}
+}
+
+float Matching_control::SFM_validate_Logic_simple(
+	const int					src_,
+	const int					des_,
+	const int					R_,
+	const Eigen::MatrixXf&		score_mat_,
+	const Eigen::MatrixXi&		layout_,
+	const bool					display_
+)
+{
+	v_int src_score;
+	v_int src_index;
+	v_int des_score;
+	v_int des_index;
+	v_int candid_gpL;
+	v_int candid_gpR;
+	v_int unique_match_list;
+
+	computeMatches_intraGroups(src_, score_mat_, src_index, src_score);
+	computeMatches_intraGroups(des_, score_mat_, des_index, des_score);
+
+	std::vector<cv::Point2i> linkages;
+	Utility::constructLinks_interGP_extensive(src_, src_index, score_mat_, R_, candid_gpL, linkages);
+	Utility::constructLinks_interGP_extensive(des_, des_index, score_mat_, R_, candid_gpR, linkages);
+	Utility::constructLinks_betnGP(candid_gpL, candid_gpR, score_mat_, linkages);
+	Utility::generateUniqueImageList(linkages, unique_match_list);
+	
+	v_int cam_index_;
+	std::vector<CameraT> cams_;
+	std::vector<Point3D> pt3d_;
+	call_VSFM(linkages, mach_name, nvm_name_union, false, false);
+	viewer.readIn_NVM(nvm_name_union, cams_, cam_index_, pt3d_);
+	delete_MAT(unique_match_list);
+	FileOperator::deleteFile(nvm_name_union);
+
+	if (display_) {
+		viewer.show_pointCloud(pt3d_, cams_, cam_index_, cam_index_, v_int(), true);
+	}
+
+	// Resolve the ambiguaties of the cameras
+	return geometric_resolve_logic(src_, des_, cam_index_, cams_);
+}
+
+bool  Matching_control::oscilation_detector(
+	const int				bigGP_threshold,
+	const int				search_R_,
+	const vv_int&			ind1_,
+	const vv_int&			ind2_,
+	const vv_int&			group_,
+	Eigen::MatrixXf&		score_mat_,
+	Graph_disamb&			global_graph_,
+	vvv_int&				split_disamb_res_
+)
+{
+	const int num = group_.size();
+	split_disamb_res_.clear();
+	split_disamb_res_.resize(1);
+
+	// Oscilation detector logic
+	v_int anomoly = Utility::oscilation_tuple_generator(ind1_, ind2_);
+
+	if (anomoly.size() == 3) {
+
+		// Only works on groups with at least two cams inside
+		if (group_[anomoly[0]].size() < 2 || group_[anomoly[1]].size() < 2 || group_[anomoly[2]].size() < 2) {
+			return false;
+		}
+
+		v_int srcNode_vec;
+		v_int desNode_vec;
+		v_int machNum_vec;
+		cv::Point3i res1, res2;
+		Utility::mostMatches_betnGP(anomoly[0], anomoly[1], group_, score_mat_, res1, srcNode_vec, desNode_vec, machNum_vec);
+		Utility::mostMatches_betnGP(anomoly[0], anomoly[2], group_, score_mat_, res2, srcNode_vec, desNode_vec, machNum_vec);
+
+		std::cout << "========= Anomoly Detected ===========" << std::endl;
+		std::cout << "(" << anomoly[0] << "," << anomoly[1] << ") <=> (" << anomoly[0] << "," << anomoly[2] << ")" << std::endl;
+		std::cout << "(" << res1.x << "," << res1.y << "): " << res1.z << "  (" << res2.x << "," << res2.y << "): " << res2.z << std::endl;
+
+		// ============== Assemble the output split results ==============
+		float scoreL;
+		float scoreR;
+		// Favor merge of small groups
+		if (group_[anomoly[0]].size() >= bigGP_threshold) {
+			if (group_[anomoly[1]].size() >= group_[anomoly[2]].size()) {
+				scoreL = 0;
+				scoreR = 1;
+			}
+			else {
+				scoreL = 1;
+				scoreR = 0;
+			}
+		}
+		else {
+			const Eigen::MatrixXi& layout = global_graph_.getLayout();
+			scoreL = SFM_validate_Logic_simple(res1.x, res1.y, search_R_, score_mat_, layout, false);
+			scoreR = SFM_validate_Logic_simple(res2.x, res2.y, search_R_, score_mat_, layout, false);
+
+			if (scoreL == -1 && scoreR == -1) {
+				scoreL = 1;
+			}
+		}
+
+		vv_int expanded(1);
+		split_disamb_res_[0].push_back(group_[anomoly[0]]);
+		if (scoreL > scoreR) {
+			std::cout << "Choose (" << res1.x << "," << res1.y << ")" << std::endl;
+			split_disamb_res_[0].push_back(group_[anomoly[1]]);
+			for (int i = 0; i < num; i++) {
+				if (i != anomoly[0] && i != anomoly[1]) {
+					expanded[0] = group_[i];
+					split_disamb_res_.push_back(expanded);
+				}
+			}
+		}
+		else if (scoreL < scoreR) {
+			std::cout << "Choose (" << res2.x << "," << res2.y << ")" << std::endl;
+			split_disamb_res_[0].push_back(group_[anomoly[2]]);
+			for (int i = 0; i < num; i++) {
+				if (i != anomoly[0] && i != anomoly[2]) {
+					expanded[0] = group_[i];
+					split_disamb_res_.push_back(expanded);
+				}
+			}
+		}
+		else {
+			std::cout << "oscilation_detector: same ambiguaity score detected ..." << std::endl;
+		}
+		// ===============================================================
+
+		return true;
+	}
+
+	return false;
+}
+
+float Matching_control::geometric_resolve_logic(
+	const int						src_,
+	const int						des_,
+	const v_int&					cam_index_,
+	const std::vector<CameraT>&		cams_
+)
+{
+	const int num  = cam_index_.size();
+	const int l_gp = cams_group_id[src_];
+	const int r_gp = cams_group_id[des_];
+
+	if (num < 4) {
+		std::cout << "VisualSFM failed to construct all cameras ..." << std::endl;
+		return -1.0f;
+	}
+
+	v_int l_ind;
+	v_int r_ind;
+	std::vector<CameraT> l_set;
+	std::vector<CameraT> r_set;
+
+	for (int i = 0; i < num; i++) {
+		const int curr_gp_id = cams_group_id[cam_index_[i]];
+		if (curr_gp_id == l_gp) {
+			l_set.push_back(cams_[i]);
+			l_ind.push_back(cam_index_[i]);
+		}
+		else if (curr_gp_id == r_gp) {
+			r_set.push_back(cams_[i]);
+			r_ind.push_back(cam_index_[i]);
+		}
+		else {
+			std::cout << "geometric_resolve_logic: unexpected camera group ..." << std::endl;
+		}
+	}
+
+	const int l_setSize = l_set.size();
+	const int r_setSize = r_set.size();
+
+	v_float l_dis;
+	v_float r_dis;
+	v_float m_dis;
+	compute_camDisVec(l_set, l_dis);
+	compute_camDisVec(r_set, r_dis);
+	compute_camDisVec(cams_, m_dis);
+
+	if (l_setSize >= 2 && r_setSize >= 2) {
+		return  m_dis[0] * 1.0f / (l_dis[0] + r_dis[0]);
+	}
+	else if (l_setSize >= 2) {
+		return  m_dis[0] * 1.0f / l_dis[0];
+	}
+	else if (r_setSize >= 2) {
+		return  m_dis[0] * 1.0f / r_dis[0];
+	}
+	else {
+		std::cout << "geometric_resolve_logic: both groups have cams less than 2 ..." << std::endl;
+		exit(1);
+	}
+}
+
+// ==========================================
+// Note the score vector itself is not sorted!!
+// ==========================================
+bool Matching_control::computeMatches_intraGroups(
+	const int					t_,
+	const Eigen::MatrixXf&		score_mat_,
+	v_int&						ind_vec_,
+	v_int&						scr_vec_
+)
+{
+	// Clear previous data
+	ind_vec_.clear();
+	scr_vec_.clear();
+
+	const int group_id = cams_group_id[t_];
+	for (int i = 0; i < image_num; i++) {
+		if (cams_group_id[i] == group_id && i != t_) {
+			ind_vec_.push_back(i);
+			scr_vec_.push_back(score_mat_(std::min(t_, i), std::max(t_, i)));
+		}
+	}
+
+	// Sort the matchign number in decreasing order
+	sort_indices(scr_vec_, ind_vec_, false);
+
+	return true;
 }

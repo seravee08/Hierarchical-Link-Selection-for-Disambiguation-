@@ -21,6 +21,12 @@ public:
 	// Read in matchings 
 	void read_matchings();
 
+	// Convert the matching file to Heinly one
+	void convertMatching_Heinly(const std::string converted_path_);
+
+	// Change the path of the matching file
+	void change_direc_matching();
+
 	// Compute matchings
 	void compute_Matchings_1v1(
 		Image_info& image_left_,
@@ -31,6 +37,12 @@ public:
 
 	// Write matches out into .txt file
 	void write_matches(std::vector<Graph_disamb>& graphs_);
+
+	// Write matches out to .txt file
+	void write_matches(Graph_disamb& graph_);
+
+	// Write matches out to .txt file with double link
+	void write_matches_stren(Graph_disamb& graph_);
 
 	// Write matches between a pair of images to .txt file
 	void write_matches_1v1(int l_, int r_);
@@ -44,8 +56,14 @@ public:
 	// Write matches between the designated pairs
 	std::string write_matches_designated(const std::string file_name_, const std::vector<cv::Point2i>& linkages);
 
+	// Write temporary image list containing only target images
+	void write_list(const std::string name_, const std::vector<cv::Point2i>& linkages_);
+
 	// Write graph layout into .txt file
 	void write_layout(std::vector<Graph_disamb>& graphs_);
+
+	// Retrive the name of the corresponding mat file created by VisualSFMf
+	std::string get_MAT_name(int index_);
 
 	// Return an outlier mask for the specified pair
 	cv::Mat get_outlier_mask(
@@ -57,6 +75,12 @@ public:
 	cv::Mat get_denseArea_mask(
 		Image_info& image_left_,
 		Image_info& image_right_
+	);
+
+	// Display multiple images in a box
+	void display_images(
+		const int				cell_size_,
+		std::vector<cv::Mat>&	t_
 	);
 
 	// Display matchings by index
@@ -150,10 +174,16 @@ public:
 	Eigen::MatrixXf getWarped_diff();
 
 	// Get the matching number matrix
-	Eigen::MatrixXi getMatching_number();
+	Eigen::MatrixXi getMatching_number_mat();
+
+	// Get the matching number matrix in float
+	Eigen::MatrixXf getMatching_number_mat_float();
 
 	// Rectify matchings according to homography mask
 	void rectify_matchings_homoMask();
+
+	// Generate float matches number matrix
+	void generate_float_matching_number_mat();
 
 	// Output the 3D points cloud as .ply file
 	static void points_to_ply(
@@ -162,26 +192,27 @@ public:
 	);
 
 private:
-	int image_num;
-	int pair_num;
+	int																	image_num;
+	int																	pair_num;
 
 	// Path to the input txt files
-	std::string					image_list_path;
-	std::string					matching_path;
+	std::string															image_list_path;
+	std::string															matching_path;
 
 	// Vector containing all the image names
-	std::vector<std::string>	img_names;
+	std::vector<std::string>											img_names;
 
 	// Note: all information are stored only in the upper triangle!!
-	Eigen::MatrixXi				matching_number_mat;
-	Eigen::MatrixXf				warped_diff_mat;
+	Eigen::MatrixXi														matching_number_mat;
+	Eigen::MatrixXf														matching_number_mat_float;
+	Eigen::MatrixXf														warped_diff_mat;
 
 	// Stores all the matchings matrix and outlier mask in a 2-dimensional vector in upper tirangle
-	std::vector<std::vector<Eigen::Matrix<int, 2, Eigen::Dynamic>>> matching_mat;
-	std::vector<std::vector<cv::Mat>>								outlier_mask_mat;
+	std::vector<std::vector<Eigen::Matrix<int, 2, Eigen::Dynamic>>>		matching_mat;
+	std::vector<std::vector<cv::Mat>>									outlier_mask_mat;
 
 	// Signals, also stored in upper tirangle!!
-	Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> homography_existence_indicator;
+	Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>					homography_existence_indicator;
 };
 
 #endif // !MATCHING_H

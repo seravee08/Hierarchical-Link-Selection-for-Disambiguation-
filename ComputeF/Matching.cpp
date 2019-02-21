@@ -48,6 +48,7 @@ Matching::Matching(const std::string image_list_path_) :
 
 	// Initialize for the matching data strucutres
 	matching_number_mat				= Eigen::MatrixXi::Zero(image_num, image_num);
+	matching_number_mat_float		= Eigen::MatrixXf::Zero(image_num, image_num);
 	warped_diff_mat					= Eigen::MatrixXf::Ones(image_num, image_num) * -1;
 	homography_existence_indicator	= Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>::Zero(image_num, image_num);
 
@@ -73,7 +74,10 @@ void Matching::read_matchings()
 {
 	// ===== Open input file stream =====
 	std::ifstream match_in(matching_path.c_str(), std::ios::in);
-	assert(match_in.is_open());
+	if (!match_in.is_open()) {
+		std::cout << "Matchings file does not exist ..." << std::endl;
+		exit(1);
+	}
 
 	// ===== Read in matchings =====
 	int matching_number;
@@ -82,6 +86,7 @@ void Matching::read_matchings()
 
 	int left_index;
 	int right_index;
+	bool switcher = false;
 
 	while (!match_in.eof()) {
 		match_in >> left_name;
@@ -91,12 +96,15 @@ void Matching::read_matchings()
 		// Find the index for the left and right image
 		left_index  = std::find(img_names.begin(), img_names.end(), left_name)  - img_names.begin();
 		right_index = std::find(img_names.begin(), img_names.end(), right_name) - img_names.begin();
+		if (left_index > right_index) {
+			SELF_DEFINE_SWAP(left_index, right_index);
+			switcher = true;
+		}
 
 		if (left_index >= img_names.size() || right_index >= img_names.size()) {
 			std::cout << "Image names from the list do not match the names in the matchings.txt ..." << std::endl;
 			exit(1);
 		}
-		assert(left_index < right_index);
 		
 		// Handle .txt file readin error
 		if (matching_number_mat(left_index, right_index) > 0) {
@@ -121,12 +129,167 @@ void Matching::read_matchings()
 
 		upper_row_mat = Eigen::Map<Eigen::Matrix<int, 1, Eigen::Dynamic>>(upper_row.data(), 1, matching_number);
 		lower_row_mat = Eigen::Map<Eigen::Matrix<int, 1, Eigen::Dynamic>>(lower_row.data(), 1, matching_number);
-		matchings_mat << upper_row_mat, lower_row_mat;
+		if (switcher) {
+			matchings_mat << lower_row_mat, upper_row_mat;
+		}
+		else {
+			matchings_mat << upper_row_mat, lower_row_mat;
+		}
 		matching_mat[left_index][right_index] = matchings_mat;
 
 		// Increase the pair of matchings counter by 1
 		pair_num++;
+		switcher = false;
 	}
+
+	generate_float_matching_number_mat();
+}
+
+void Matching::convertMatching_Heinly(const std::string converted_path_)
+{
+	// ===== Open input file stream =====
+	std::ifstream match_in(matching_path.c_str(), std::ios::in);
+	if (!match_in.is_open()) {
+		std::cout << "Matchings file does not exist ..." << std::endl;
+		exit(1);
+	}
+	std::ofstream match_out(converted_path_.c_str(), std::ios::out);
+	if (!match_out.is_open()) {
+		std::cout << "Output matchings file does not exist ..." << std::endl;
+		exit(1);
+	}
+
+	// ===== Read in matchings =====
+	int matching_number;
+	std::string left_name;
+	std::string right_name;
+
+	int left_index;
+	int right_index;
+
+	while (!match_in.eof()) {
+		match_in >> left_name;
+		match_in >> right_name;
+		match_in >> matching_number;
+
+		// Find the index for the left and right image
+		left_index = std::find(img_names.begin(), img_names.end(), left_name) - img_names.begin();
+		right_index = std::find(img_names.begin(), img_names.end(), right_name) - img_names.begin();
+		if (left_index > right_index) {
+			SELF_DEFINE_SWAP(left_index, right_index);
+		}
+
+		if (left_index >= img_names.size() || right_index >= img_names.size()) {
+			std::cout << "Image names from the list do not match the names in the matchings.txt ..." << std::endl;
+			exit(1);
+		}
+
+		match_out << left_index << " " << left_name << std::endl;
+		match_out << right_index << " " << right_name << std::endl;
+		match_out << matching_number << std::endl;
+
+		Image_info imgL(left_name);
+		Image_info imgR(right_name);
+		imgL.readAuxililiary_BINARY();
+		imgL.readASift_BINARY();
+		imgR.readAuxililiary_BINARY();
+		imgR.readASift_BINARY();
+		Eigen::Matrix<float, 2, Eigen::Dynamic> coord1 = imgL.get_coordinates();
+		Eigen::Matrix<float, 2, Eigen::Dynamic> coord2 = imgR.get_coordinates();
+			
+		// Handle .txt file readin error
+		if (matching_number_mat(left_index, right_index) > 0) {
+			break;
+		}
+
+		// Read in the matchings
+		std::vector<int> upper_row(matching_number);
+		std::vector<int> lower_row(matching_number);
+		for (int i = 0; i < matching_number; i++) {
+			match_in >> upper_row[i];
+		}
+		for (int i = 0; i < matching_number; i++) {
+			match_in >> lower_row[i];
+		}
+
+		for (int i = 0; i < matching_number; i++) {
+			match_out << upper_row[i] << " " << coord1(0, upper_row[i]) << " " << coord1(1, upper_row[i]) << " ";
+			match_out << lower_row[i] << " " << coord2(0, lower_row[i]) << " " << coord2(1, lower_row[i]) << std::endl;
+		}
+		match_out << std::endl;
+	}
+
+	match_in.close();
+	match_out.close();
+}
+
+void Matching::change_direc_matching()
+{
+	// ===== Open input file stream =====
+	std::ifstream in(matching_path.c_str(), std::ios::in);
+	if (!in.is_open()) {
+		std::cout << "Matchings file does not exist ..." << std::endl;
+		exit(1);
+	}
+
+	int worker;
+	int mach_num;
+	std::string path;
+	std::string path_tmp;
+	std::string name;
+	std::string left_name;
+	std::string right_name;
+	std::string left_name_valid = "";
+	std::string right_name_valid = "";
+	std::string post_fix = ".jpg";
+	Image_info::splitFilename(image_list_path, path, name);
+	std::string rec_matches = path + "/matchings_rectified.txt";
+
+	std::ofstream out(rec_matches.c_str(), std::ios::out);
+	if (!out.is_open()) {
+		std::cout << "Matchings file does not exist ..." << std::endl;
+		exit(1);
+	}
+
+	while (!in.eof()) {
+		in >> left_name;
+		in >> right_name;
+		if (left_name == left_name_valid && right_name == right_name_valid) {
+			break;
+		}
+
+		left_name_valid  = left_name;
+		right_name_valid = right_name;
+		Image_info::splitFilename(left_name, path_tmp, name);
+		out << path + "/" + name + post_fix << std::endl;
+		Image_info::splitFilename(right_name, path_tmp, name);
+		out << path + "/" + name + post_fix << std::endl;
+		in >> mach_num;
+		out << mach_num << std::endl;
+
+		for (int i = 0; i < mach_num; i++) {
+			in >> worker;
+			out << worker << " ";
+		}
+		out << std::endl;
+		for (int i = 0; i < mach_num; i++) {
+			in >> worker;
+			out << worker << " ";
+		}
+		out << std::endl << std::endl;
+	}
+
+	in.close();
+	out.close();
+
+	FileOperator::deleteFile(matching_path);
+	FileOperator::renameFile(rec_matches, matching_path);
+}
+
+void Matching::generate_float_matching_number_mat()
+{
+	// TODO: Naive implementaion
+	matching_number_mat_float = matching_number_mat.cast<float>();
 }
 
 void Matching::compute_Matchings_1v1(
@@ -228,6 +391,12 @@ void Matching::display_matchings(
 	const Eigen::Matrix<float, 2, Eigen::Dynamic>& coords1 = (locally_computed)? image_left_.get_coordinates_locally_computed() : image_left_.get_coordinates();
 	const Eigen::Matrix<float, 2, Eigen::Dynamic>& coords2 = (locally_computed)? image_right_.get_coordinates_locally_computed(): image_right_.get_coordinates();
 
+	// Check if the SIFT features are loaded
+	if (coords1.cols() <= 0 || coords2.cols() <= 0) {
+		std::cout << "The SIFT is not loaded ..." << std::endl;
+		exit(1);
+	}
+
 	// Declare a new container and fill it with the two images
 	cv::Mat concatenated(std::max(lheight, rheight), lwidth + rwidth, CV_8UC3, cv::Scalar(0));
 	cv::Mat concat_left(concatenated,  cv::Rect(0, 0, lwidth, lheight));
@@ -263,9 +432,47 @@ void Matching::display_matchings(
 		}
 	}
 
+	cv::resize(concatenated, concatenated, cv::Size(1960, int(concatenated.rows * 1960.0 / concatenated.cols)));
 	cv::imshow("Matchings", concatenated);
 	cv::waitKey();
 }
+
+void Matching::display_images(
+	const int				cell_size_,
+	std::vector<cv::Mat>&	t_
+)
+{
+	const int cam_num = t_.size();
+	const int cell_h = cell_size_;
+	const int cell_w = cell_size_;
+	int curtain_h;
+	int curtain_w;
+	if (std::ceil(std::sqrt((float)cam_num)) * std::floor(std::sqrt((float)cam_num)) >= cam_num) {
+		curtain_h = std::floor(std::sqrt((float)cam_num));
+		curtain_w = std::ceil(std::sqrt((float)cam_num));
+	}
+	else {
+		curtain_h = std::ceil(std::sqrt((float)cam_num));
+		curtain_w = std::ceil(std::sqrt((float)cam_num));
+	}
+
+	cv::Mat curtain(cell_h * curtain_h, cell_w * curtain_w, CV_8UC3, cv::Scalar(255, 255, 255));
+	for (int i = 0; i < cam_num; i++) {
+		cv::Mat img = t_[i];
+		const int img_h = img.rows;
+		const int img_w = img.cols;
+		const float ratio = (img_h >= img_w) ? cell_h * 1.0f / img_h : cell_h * 1.0f / img_w;
+		cv::resize(img, img, cv::Size(int(img_w * ratio), int(img_h * ratio)));
+		const int x = i % curtain_w;
+		const int y = i / curtain_w;
+		cv::Mat curtain_region(curtain, cv::Rect(x * cell_w, y * cell_h, int(img_w * ratio), int(img_h * ratio)));
+		img.copyTo(curtain_region);
+	}
+
+	cv::imshow("Group", curtain);
+	cv::waitKey();
+}
+
 
 cv::Mat Matching::get_denseArea_mask(
 	Image_info& image_left_,
@@ -955,6 +1162,112 @@ void Matching::write_matches(std::vector<Graph_disamb>& graphs_)
 	}
 }
 
+void Matching::write_matches(Graph_disamb& graph_)
+{
+	// Compose the path to the correspoinding matchings.txt
+	std::string path;
+	std::string name;
+	Image_info::splitFilename(image_list_path, path, name);
+
+	// Compose output path for current graph
+	std::string path_matches = path + "/matchings_global.txt";
+	std::ofstream match_out(path_matches.c_str(), std::ios::out);
+	assert(match_out.is_open());
+
+	// Retrieve the current graph layout
+	const Eigen::MatrixXi layout = graph_.getLayout();
+	assert(image_num == layout.rows());
+	assert(image_num == layout.cols());
+
+	for (int j = 0; j < image_num - 1; j++) {
+		for (int k = j + 1; k < image_num; k++) {
+			const int matching_number = matching_number_mat(j, k);
+
+			if (matching_number > 0 && layout(j, k) == 1) {
+				match_out << img_names[j] << std::endl;
+				match_out << img_names[k] << std::endl;
+				match_out << matching_number << std::endl;
+
+				// Retrieve the matching matrix
+				const Eigen::Matrix<int, 2, Eigen::Dynamic>& matchings = matching_mat[j][k];
+				// Write out upper indices
+				for (int l = 0; l < matching_number; l++) {
+					match_out << matchings(0, l) << " ";
+				}
+				match_out << std::endl;
+				// Write out lower indices
+				for (int l = 0; l < matching_number; l++) {
+					match_out << matchings(1, l) << " ";
+				}
+				match_out << std::endl << std::endl;
+			}
+		}
+	}
+
+	// Close the output stream
+	match_out.close();
+}
+
+void Matching::write_matches_stren(Graph_disamb& graph_)
+{
+	// Compose the path to the correspoinding matchings.txt
+	std::string path;
+	std::string name;
+	Image_info::splitFilename(image_list_path, path, name);
+
+	// Compose output path for current graph
+	std::string path_matches = path + "/matchings_global.txt";
+	std::ofstream match_out(path_matches.c_str(), std::ios::out);
+	assert(match_out.is_open());
+
+	// Retrieve the current graph layout
+	const Eigen::MatrixXi layout = graph_.getLayout();
+	assert(image_num == layout.rows());
+	assert(image_num == layout.cols());
+
+	std::vector<cv::Point2i> linkages;
+	for (int i = 0; i < image_num - 1; i++) {
+		for (int j = i + 1; j < image_num; j++) {
+			if (layout(i, j) == 1) {
+				linkages.push_back(cv::Point2i(i, j));
+				for (int k = j + 1; k < image_num; k++) {
+					if (layout(j, k) == 1) {
+						linkages.push_back(cv::Point2i(i, k));
+					}
+				}
+			}
+		}
+	}
+
+	for (int i = 0; i < linkages.size(); i++) {
+		const int l = linkages[i].x;
+		const int r = linkages[i].y;
+		const int match_number = matching_number_mat(l, r);
+		if (match_number > 0) {
+			match_out << img_names[l] << std::endl;
+			match_out << img_names[r] << std::endl;
+			match_out << match_number << std::endl;
+
+
+			// Retrieve the matching matrix
+			const Eigen::Matrix<int, 2, Eigen::Dynamic>& matchings = matching_mat[l][r];
+			// Write out upper indices
+			for (int j = 0; j < match_number; j++) {
+				match_out << matchings(0, j) << " ";
+			}
+			match_out << std::endl;
+			// Write out lower indices
+			for (int j = 0; j < match_number; j++) {
+				match_out << matchings(1, j) << " ";
+			}
+			match_out << std::endl << std::endl;
+		}
+	}
+
+	// Close the output stream
+	match_out.close();
+}
+
 void Matching::write_matches_1v1(int l_, int r_)
 {
 	if (l_ == r_ || l_ >= image_num || r_ >= image_num) {
@@ -1143,7 +1456,7 @@ std::string Matching::write_matches_designated(const std::string file_name_, con
 	Image_info::splitFilename(image_list_path, path, name);
 	std::string save_name;
 	(file_name_ == std::string("")) ? save_name = path + "/tmp_matches.txt" : save_name = path + "/" + file_name_;
-	std::ofstream match_out(save_name.c_str(), std::ios::out);
+	std::ofstream match_out(save_name.c_str(), std::ios::out | std::ios::app);
 
 	if (!match_out.is_open()) {
 		std::cout << "File open failed ..." << std::endl;
@@ -1152,8 +1465,8 @@ std::string Matching::write_matches_designated(const std::string file_name_, con
 	
 	int output_cntr = 0;
 	for (int i = 0; i < link_nums; i++) {
-		const int l = linkages[i].x;
-		const int r = linkages[i].y;
+		const int l = std::min(linkages[i].x, linkages[i].y);
+		const int r = std::max(linkages[i].x, linkages[i].y);
 		const int mach_num = matching_number_mat(l, r);
 
 		if (mach_num > 0) {
@@ -1183,6 +1496,42 @@ std::string Matching::write_matches_designated(const std::string file_name_, con
 	}
 
 	return save_name;
+}
+
+void Matching::write_list(
+	const std::string name_,
+	const std::vector<cv::Point2i>& linkages_
+)
+{
+	// Validation process
+	const int link_nums = linkages_.size();
+	if (link_nums <= 0) {
+		std::cout << "write_list: the linkages set is empty ..." << std::endl;
+		return;
+	}
+
+	// Retrive the image indices
+	v_int img_ind;
+	Utility::generateUniqueImageList(linkages_, img_ind);
+
+	std::string path;
+	std::string name;
+	std::string save_name;
+	Image_info::splitFilename(image_list_path, path, name);
+	save_name = path + "/" + name_;
+	std::ofstream match_out(save_name.c_str(), std::ios::out);
+
+	if (!match_out.is_open()) {
+		std::cout << "File open failed ..." << std::endl;
+		return;
+	}
+
+	for (int i = 0; i < img_ind.size(); i++) {
+		match_out << img_names[img_ind[i]] << std::endl;
+	}
+
+	// Close the output stream
+	match_out.close();
 }
 
 void Matching::write_layout(std::vector<Graph_disamb>& graphs_)
@@ -1268,7 +1617,17 @@ Eigen::MatrixXf Matching::getWarped_diff()
 	return warped_diff_mat;
 }
 
-Eigen::MatrixXi Matching::getMatching_number()
+Eigen::MatrixXi Matching::getMatching_number_mat()
 {
 	return matching_number_mat;
+}
+
+Eigen::MatrixXf Matching::getMatching_number_mat_float()
+{
+	return matching_number_mat_float;
+}
+
+std::string Matching::get_MAT_name(int index_)
+{
+	return Image_info::extract_MAT_name(img_names[index_]);
 }

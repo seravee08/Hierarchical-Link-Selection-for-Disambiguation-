@@ -14,23 +14,35 @@ Graph_disamb::Graph_disamb(const int node_num_) :
 	node_status = std::vector<int>(node_num, 0);
 }
 
+Graph_disamb::Graph_disamb()
+{
+	node_num = -1;
+}
+
+void Graph_disamb::setNodeNum(const int num_)
+{
+	node_num = num_;
+	layOut = Eigen::MatrixXi::Zero(node_num, node_num);
+	node_status = std::vector<int>(node_num, 0);
+}
+
 void Graph_disamb::addEdge(
-	int source_index_,
-	int desti_index_
+	const int source_index_,
+	const int desti_index_
 )
 {
 	// Validate the source and destination indices
 	assert(source_index_ != desti_index_);
-	if (source_index_ > desti_index_) {
-		int swap_tmp = source_index_;
-		source_index_ = desti_index_;
-		desti_index_ = swap_tmp;
+
+	// Decide if the graph is initialized
+	if (node_num <= 0) {
+		std::cout << "Graph_disamb::addEdge: the graph is not initialized ..." << std::endl;
 	}
 
 	// Update the layout and node status
-	layOut(source_index_, desti_index_) = 1;
-	node_status[source_index_]			= 1;
-	node_status[desti_index_]			= 1;
+	layOut(std::min(source_index_, desti_index_), std::max(source_index_, desti_index_)) = 1;
+	node_status[source_index_]															 = 1;
+	node_status[desti_index_]															 = 1;
 }
 
 int Graph_disamb::get_node_status(int index_)
@@ -46,4 +58,9 @@ int Graph_disamb::number_nodes_inGraph()
 Eigen::MatrixXi Graph_disamb::getLayout()
 {
 	return layOut;
+}
+
+void Graph_disamb::setLayout(const Eigen::MatrixXi& layout_)
+{
+	layOut = layout_;
 }
